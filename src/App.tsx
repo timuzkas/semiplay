@@ -471,20 +471,17 @@ function AppContent() {
           />
         </main>
 
-        <div className="lg:hidden fixed bottom-2 left-1/2 -translate-x-1/2 z-[100] w-[94%] max-w-[440px]">
+        <div className="lg:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-[100] w-[92%] max-w-[400px]">
           <Drawer.Root>
             <Drawer.Trigger asChild>
-              <button className="w-full flex items-center justify-between px-6 py-4 bg-zinc-900/90 backdrop-blur-2xl border border-white/10 rounded-[24px] shadow-[0_8px_32px_rgba(0,0,0,0.8)] ring-1 ring-white/5 animate-in slide-in-from-bottom-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                    <ChevronUp className="w-4 h-4 text-primary" />
-                  </div>
-                  <span className="text-[11px] font-black uppercase tracking-[0.25em] text-white/90">Up Next</span>
+              <button className="w-full flex items-center justify-between px-5 py-2.5 bg-black/60 backdrop-blur-xl border border-white/[0.08] rounded-full shadow-[0_4px_24px_rgba(0,0,0,0.4)] animate-in slide-in-from-bottom-4 transition-transform active:scale-[0.98]">
+                <div className="flex items-center gap-2.5">
+                  <ChevronUp className="w-3.5 h-3.5 text-white/40" />
+                  <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/60">Queue</span>
                 </div>
                 {queue.length > 0 && (
-                  <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-white/5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                    <span className="text-[11px] font-bold text-white">{queue.length} tracks</span>
+                  <div className="flex items-center gap-1.5 px-2 py-0.5 bg-white/[0.05] rounded-full border border-white/[0.05]">
+                    <span className="text-[9px] font-medium text-white/40">{queue.length} items</span>
                   </div>
                 )}
               </button>
