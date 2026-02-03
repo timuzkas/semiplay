@@ -1,0 +1,907 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Music2, Youtube, Minimize2, Settings, Monitor, Palette } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+// Components
+import { AlbumArtwork } from '@/components/AlbumArtwork';
+import { TrackInfo } from '@/components/TrackInfo';
+import { ProgressBar } from '@/components/ProgressBar';
+import { PlaybackButtons } from '@/components/PlaybackButtons';
+import { VolumeControl } from '@/components/VolumeControl';
+import { LyricsQueuePanel } from '@/components/LyricsQueuePanel';
+import { Visualizer } from '@/components/Visualizer';
+import { ServiceSelector } from '@/components/ServiceSelector';
+import { YouTubeSearch } from '@/components/YouTubeSearch';
+import { TVMode } from '@/components/TVMode';
+import { ThemeProvider, useTheme } from '@/components/ThemeProvider';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+// Hooks
+import { useSpotifyAuth } from '@/hooks/useSpotifyAuth';
+import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer';
+import { useYouTubePlayer } from '@/hooks/useYouTubePlayer';
+import { useUnifiedLyrics } from '@/hooks/useUnifiedLyrics';
+import { useAlbumColor } from '@/hooks/useAlbumColor';
+import { io, Socket } from 'socket.io-client';
+
+import type { Track } from '@/types/music';
+
+// Spotify Icon Component
+function SpotifyIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+    </svg>
+  );
+}
+
+function AppContent() {
+  const { theme, setTheme, accentColor, setAccentColor } = useTheme();
+  const { extractColor } = useAlbumColor();
+  
+  // Set default theme to album-accent on first load
+  useEffect(() => {
+    const saved = localStorage.getItem('music-visualizer-theme');
+    if (!saved) {
+      setTheme('album-accent');
+    }
+  }, [setTheme]);
+  
+  // Auth states
+  const spotifyAuth = useSpotifyAuth();
+  const [youtubeConnected, setYoutubeConnected] = useState(false);
+  
+  // Active service
+  const [activeService, setActiveService] = useState<'spotify' | 'youtube'>('youtube');
+  
+  // UI states
+  const [showSettings, setShowSettings] = useState(false);
+  const [showThemeSettings, setShowThemeSettings] = useState(false);
+  const [tvMode, setTvMode] = useState(false);
+  const [visualizerType, setVisualizerType] = useState<'bars' | 'wave' | 'circle'>('bars');
+  const [showVisualizer, setShowVisualizer] = useState(false);
+  const [showLyrics, setShowLyrics] = useState(true);
+  const [lyricsSource, setLyricsSource] = useState<'lrclib' | 'netease' | 'ovh'>('lrclib');
+  
+  // Queue
+  const [queue, setQueue] = useState<Track[]>([]);
+  
+  // Room Sync
+  const [roomSync, setRoomSync] = useState(false);
+  const [roomId, setRoomId] = useState<string | null>(null);
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const isApplyingSyncRef = useRef(false);
+
+  // Auto-connect YouTube if share link is used
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has('share')) {
+      setYoutubeConnected(true);
+    }
+  }, []);
+
+  const toggleRoomSync = useCallback(() => {
+    if (!roomSync) {
+      const newId = Math.random().toString(36).substring(2, 7).toUpperCase();
+      setRoomId(newId);
+      setRoomSync(true);
+      socket?.emit('join-room', newId);
+      // Update URL without reload
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.set('share', newId);
+      window.history.pushState({}, '', newUrl);
+    } else {
+      setRoomSync(false);
+      setRoomId(null);
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('share');
+      window.history.pushState({}, '', newUrl);
+    }
+  }, [roomSync, socket]);
+
+  const copyShareLink = useCallback(() => {
+    if (roomId) {
+      const url = `${window.location.origin}${window.location.pathname}?share=${roomId}`;
+      navigator.clipboard.writeText(url);
+      // Optional: Add a toast notification here if you have one
+    }
+  }, [roomId]);
+
+  // Spotify player
+  const spotifyPlayer = useSpotifyPlayer({ 
+    accessToken: spotifyAuth.accessToken 
+  });
+
+  // YouTube player
+  const youtubePlayer = useYouTubePlayer();
+
+  // Current track info
+  const currentTrack: Track | null = activeService === 'spotify'
+    ? (spotifyPlayer.currentTrack ? {
+        id: spotifyPlayer.currentTrack.id || '',
+        name: spotifyPlayer.currentTrack.name,
+        artist: spotifyPlayer.currentTrack.artists.map(a => a.name).join(', '),
+        album: spotifyPlayer.currentTrack.album.name,
+        duration: spotifyPlayer.duration,
+        artwork: spotifyPlayer.currentTrack.album.images[0]?.url,
+        source: 'spotify',
+      } : null)
+    : youtubePlayer.currentTrack;
+
+  const isPlaying = activeService === 'spotify' 
+    ? !spotifyPlayer.isPaused && spotifyPlayer.isActive
+    : youtubePlayer.playbackState.isPlaying;
+
+  const position = activeService === 'spotify'
+    ? spotifyPlayer.position
+    : youtubePlayer.playbackState.position;
+
+  const duration = activeService === 'spotify'
+    ? spotifyPlayer.duration
+    : youtubePlayer.playbackState.duration;
+
+  const volume = activeService === 'spotify'
+    ? spotifyPlayer.volume
+    : youtubePlayer.playbackState.volume;
+
+  const handlePlayPause = useCallback(() => {
+    if (activeService === 'spotify') {
+      spotifyPlayer.togglePlay();
+    } else {
+      youtubePlayer.togglePlay();
+    }
+  }, [activeService, spotifyPlayer, youtubePlayer]);
+
+  const handleSeek = useCallback((newPosition: number) => {
+    if (activeService === 'spotify') {
+      spotifyPlayer.seek(newPosition);
+    } else {
+      youtubePlayer.seek(newPosition);
+    }
+  }, [activeService, spotifyPlayer, youtubePlayer]);
+
+  // Initialize Socket
+  useEffect(() => {
+    const s = io('http://localhost:3001');
+    setSocket(s);
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const shareId = urlParams.get('share');
+    if (shareId) {
+      setRoomId(shareId);
+      setRoomSync(true);
+      s.emit('join-room', shareId);
+    }
+
+    return () => {
+      s.disconnect();
+    };
+  }, []);
+
+  const lastSyncTimeRef = useRef<number>(0);
+  const lastUserActionTimestampRef = useRef<number>(0);
+  const lastQueueActionTimestampRef = useRef<number>(0);
+
+  // Broadcast changes immediately
+  const broadcastState = useCallback((overrides: any = {}) => {
+    if (!socket || !roomSync || !roomId || isApplyingSyncRef.current) return;
+    
+    const now = Date.now();
+    // If this is a direct user action (overrides provided), update our local action timestamp
+    if (Object.keys(overrides).length > 0) {
+      lastUserActionTimestampRef.current = now;
+      if ('queue' in overrides) {
+        lastQueueActionTimestampRef.current = now;
+      }
+    }
+
+    const state = {
+      track: currentTrack,
+      position,
+      isPlaying,
+      queue,
+      timestamp: now,
+      sender: socket.id,
+      ...overrides
+    };
+
+    socket.emit('update-state', { roomId, state });
+  }, [socket, roomSync, roomId, currentTrack, position, isPlaying, queue]);
+
+  // Sync Logic
+  useEffect(() => {
+    if (!socket || !roomSync || !roomId) return;
+
+    const handleSync = (state: any) => {
+      // 1. Ignore our own messages
+      if (state.sender === socket.id) return;
+
+      // 2. Conflict Resolution: If the incoming state is older than our last manual action, ignore it
+      if (state.timestamp < lastUserActionTimestampRef.current - 500) {
+        return;
+      }
+
+      // 3. Cooldown: Avoid rapid-fire updates
+      if (Date.now() - lastSyncTimeRef.current < 800) return;
+
+      console.log('[Sync] Applying remote state', state.track?.name);
+      isApplyingSyncRef.current = true;
+
+      let trackChanged = false;
+
+      // Track Sync
+      if (state.track && state.track.id !== currentTrack?.id) {
+        if (state.track.source === 'youtube') {
+          setActiveService('youtube');
+          youtubePlayer.playTrack(state.track);
+          trackChanged = true;
+        }
+      }
+      
+      // Queue Sync - Only if we haven't modified our queue recently
+      if (state.queue && 
+          JSON.stringify(state.queue) !== JSON.stringify(queue) && 
+          state.timestamp > lastQueueActionTimestampRef.current) {
+        setQueue(state.queue);
+      }
+
+      // Only sync position and playback state if track didn't just change
+      if (!trackChanged) {
+        if (typeof state.position === 'number' && Math.abs(state.position - position) > 8000) {
+          console.log('[Sync] Adjusting position', state.position);
+          handleSeek(state.position);
+        }
+
+        if (typeof state.isPlaying === 'boolean' && state.isPlaying !== isPlaying) {
+          console.log('[Sync] Adjusting playback state to', state.isPlaying ? 'PLAYING' : 'PAUSED');
+          if (state.isPlaying) {
+            if (activeService === 'youtube') youtubePlayer.play();
+            else spotifyPlayer.togglePlay();
+          } else {
+            if (activeService === 'youtube') youtubePlayer.pause();
+            else spotifyPlayer.togglePlay();
+          }
+        }
+      }
+
+      lastSyncTimeRef.current = Date.now();
+      
+      setTimeout(() => {
+        isApplyingSyncRef.current = false;
+      }, 2000);
+    };
+
+    const handleRequestState = () => {
+      console.log('[Sync] Responding to state request');
+      broadcastState();
+    };
+
+    socket.on('sync-state', handleSync);
+    socket.on('request-state', handleRequestState);
+
+    return () => {
+      socket.off('sync-state', handleSync);
+      socket.off('request-state', handleRequestState);
+    };
+  }, [socket, roomSync, roomId, currentTrack, position, isPlaying, queue, handleSeek, handlePlayPause, youtubePlayer, broadcastState]);
+
+  // Initial broadcast when joining or enabling room sync
+  useEffect(() => {
+    if (roomSync && roomId && socket) {
+      broadcastState();
+    }
+  }, [roomSync, roomId, !!socket]); // Only trigger when room sync is toggled or room ID is set
+
+  // Periodic position broadcast
+  useEffect(() => {
+    if (!roomSync || !isPlaying || isApplyingSyncRef.current) return;
+    const interval = setInterval(() => broadcastState(), 10000); // Less frequent periodic sync
+    return () => clearInterval(interval);
+  }, [roomSync, isPlaying, broadcastState]);
+
+  // Handle Playback Change Syncs
+  const syncPlayPause = useCallback(() => {
+    if (isApplyingSyncRef.current) return;
+    
+    // We want to broadcast the state AFTER the toggle.
+    // Since handlePlayPause doesn't return the new state, we anticipate it.
+    const newIsPlaying = !isPlaying;
+    handlePlayPause();
+    
+    if (roomSync) {
+      broadcastState({ isPlaying: newIsPlaying });
+    }
+  }, [handlePlayPause, roomSync, broadcastState, isPlaying]);
+
+  const syncSeek = useCallback((pos: number) => {
+    if (isApplyingSyncRef.current) return;
+    handleSeek(pos);
+    if (roomSync) {
+      broadcastState({ position: pos });
+    }
+  }, [handleSeek, roomSync, broadcastState]);
+
+  // Sync queue changes too
+  useEffect(() => {
+    if (roomSync && !isApplyingSyncRef.current) {
+      broadcastState();
+    }
+  }, [queue.length, roomSync, broadcastState]);
+
+  // Lyrics
+  const lyrics = useUnifiedLyrics({
+    trackName: currentTrack?.name || null,
+    artistName: currentTrack?.artist || null,
+    albumName: currentTrack?.album || null,
+    duration,
+    currentPosition: position,
+    isPlaying,
+    source: lyricsSource,
+  });
+
+  // Auto-extract accent color from album artwork
+  useEffect(() => {
+    if (theme === 'album-accent' && currentTrack?.artwork) {
+      extractColor(currentTrack.artwork).then((color) => {
+        setAccentColor(color);
+      });
+    }
+  }, [currentTrack?.artwork, theme, extractColor, setAccentColor]);
+
+  // Handle OAuth callback
+  useEffect(() => {
+    if (window.location.hash.includes('access_token')) {
+      spotifyAuth.handleCallback();
+    }
+  }, [spotifyAuth]);
+
+  // Combined TV/Fullscreen toggle
+  const toggleTVMode = useCallback(async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        setTvMode(true);
+      } else {
+        if (document.exitFullscreen) await document.exitFullscreen();
+        setTvMode(false);
+      }
+    } catch {
+      setTvMode(prev => !prev);
+    }
+  }, []);
+
+  // Listen for fullscreen changes to sync tvMode
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && tvMode) {
+        setTvMode(false);
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, [tvMode]);
+
+  // Queue management
+  const addToQueue = useCallback((track: Track) => {
+    const newQueue = [...queue, track];
+    setQueue(newQueue);
+    if (roomSync) {
+      broadcastState({ queue: newQueue });
+    }
+  }, [queue, roomSync, broadcastState]);
+
+  const removeFromQueue = useCallback((index: number) => {
+    const newQueue = queue.filter((_, i) => i !== index);
+    setQueue(newQueue);
+    if (roomSync) {
+      broadcastState({ queue: newQueue });
+    }
+  }, [queue, roomSync, broadcastState]);
+
+  const clearQueue = useCallback(() => {
+    setQueue([]);
+    if (roomSync) {
+      broadcastState({ queue: [] });
+    }
+  }, [roomSync, broadcastState]);
+
+  const playFromQueue = useCallback((track: Track, index: number) => {
+    if (track.source === 'youtube') {
+      setActiveService('youtube');
+      youtubePlayer.playTrack(track);
+    }
+    setQueue(prev => prev.filter((_, i) => i !== index));
+    if (roomSync) {
+      // Direct broadcast with the new track to establish authority
+      broadcastState({ track, isPlaying: true, position: 0 });
+    }
+  }, [youtubePlayer, roomSync, broadcastState]);
+
+  const handlePrevious = useCallback(() => {
+    if (activeService === 'spotify') {
+      spotifyPlayer.previousTrack();
+    }
+  }, [activeService, spotifyPlayer]);
+
+  const handleNext = useCallback(() => {
+    if (activeService === 'spotify') {
+      spotifyPlayer.nextTrack();
+    } else if (queue.length > 0) {
+      playFromQueue(queue[0], 0);
+    }
+  }, [activeService, spotifyPlayer, queue, playFromQueue]);
+
+  const handleVolumeChange = useCallback((newVolume: number) => {
+    if (activeService === 'spotify') {
+      spotifyPlayer.setVolume(newVolume);
+    } else {
+      youtubePlayer.setVolume(newVolume);
+    }
+  }, [activeService, spotifyPlayer, youtubePlayer]);
+
+  // Shuffle and repeat
+  const [shuffle, setShuffle] = useState(false);
+  const [repeat, setRepeat] = useState<'off' | 'track' | 'all'>('off');
+
+  const handleShuffleToggle = useCallback(() => {
+    setShuffle(prev => !prev);
+  }, []);
+
+  const handleRepeatToggle = useCallback(() => {
+    setRepeat(prev => {
+      if (prev === 'off') return 'all';
+      if (prev === 'all') return 'track';
+      return 'off';
+    });
+  }, []);
+
+  // Auto-play from queue when track ends
+  useEffect(() => {
+    if (duration > 0 && position >= duration - 1000) {
+      if (repeat === 'track') {
+        handleSeek(0);
+        if (!isPlaying) handlePlayPause();
+      } else if (queue.length > 0) {
+        playFromQueue(queue[0], 0);
+      } else if (repeat === 'all') {
+        // Simple loop back to previous track if logic exists, for now handleNext
+        handleNext();
+      } else {
+        // End of playback or default behavior
+        handleNext();
+      }
+    }
+  }, [position, duration, queue, repeat, playFromQueue, handleSeek, isPlaying, handlePlayPause, handleNext]);
+
+  // Service selector
+  const services = [
+    {
+      id: 'spotify' as const,
+      name: 'Spotify',
+      icon: <SpotifyIcon className="w-4 h-4" />,
+      connected: spotifyAuth.isAuthenticated,
+    },
+    {
+      id: 'youtube' as const,
+      name: 'YouTube',
+      icon: <Youtube className="w-4 h-4" />,
+      connected: youtubeConnected,
+    },
+  ];
+
+  // Login screen check
+  const showOnboarding = !spotifyAuth.isAuthenticated && !youtubeConnected && !new URLSearchParams(window.location.search).get('share');
+
+  if (showOnboarding) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <div className="max-w-md w-full space-y-8 text-center">
+          <div className="flex justify-center">
+            <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center">
+              <Music2 className="w-10 h-10 text-primary" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-4xl font-instrument tracking-tight">semiplay</h1>
+            <p className="text-muted-foreground text-sm">
+              Connect your music service to enjoy lyrics and visualizations
+            </p>
+          </div>
+          <div className="space-y-3">
+            <button
+              onClick={spotifyAuth.login}
+              className={cn(
+                'w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl',
+                'bg-[#1DB954] text-white font-medium',
+                'hover:opacity-90 active:scale-[0.98] transition-all duration-200'
+              )}
+            >
+              <SpotifyIcon className="w-5 h-5" />
+              Connect with Spotify
+            </button>
+            <button
+              onClick={() => setYoutubeConnected(true)}
+              className={cn(
+                'w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl',
+                'bg-secondary text-foreground font-medium',
+                'hover:bg-secondary/80 active:scale-[0.98] transition-all duration-200'
+              )}
+            >
+              <Youtube className="w-5 h-5" />
+              Use YouTube Music
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Spotify Premium required for full playback control
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className={cn(
+        'h-screen bg-background flex flex-col transition-colors duration-500 overflow-hidden'
+      )}>
+        <header className="flex items-center justify-between px-6 py-4 border-b shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Music2 className="w-4 h-4 text-primary" />
+            </div>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-xl font-instrument cursor-help">semiplay</span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="text-xs">v2.1.0-revamp</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <ServiceSelector
+            services={services}
+            activeService={activeService}
+            onSelect={setActiveService}
+          />
+          <div className="flex items-center gap-1">
+            {activeService === 'youtube' && (
+              <YouTubeSearch 
+                onAddToQueue={addToQueue}
+                onPlayNow={(track: Track) => {
+                  youtubePlayer.playTrack(track);
+                  if (roomSync) {
+                    broadcastState({ track, isPlaying: true, position: 0 });
+                  }
+                }}
+              />
+            )}
+            <button
+              onClick={() => setShowThemeSettings(true)}
+              className="p-2.5 rounded-full hover:bg-secondary transition-colors"
+              title="Theme"
+            >
+              <Palette className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setShowSettings(true)}
+              className="p-2.5 rounded-full hover:bg-secondary transition-colors"
+              title="Settings"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
+            <button
+              onClick={toggleTVMode}
+              className={cn(
+                "p-2.5 rounded-full transition-colors",
+                tvMode ? "bg-primary text-primary-foreground" : "hover:bg-secondary"
+              )}
+              title="TV Mode (Fullscreen)"
+            >
+              <Monitor className="w-5 h-5" />
+            </button>
+          </div>
+        </header>
+
+        <main className="flex-1 flex overflow-hidden">
+          <div className="flex-1 flex flex-col p-6 min-w-0 overflow-y-auto scrollbar-hide">
+            <div className="flex flex-col items-center justify-center flex-1 gap-8 py-8">
+              <AlbumArtwork
+                src={currentTrack?.artwork}
+                alt={currentTrack?.name}
+                size="large"
+                isPlaying={isPlaying}
+              />
+              <TrackInfo
+                name={currentTrack?.name || 'Not Playing'}
+                artist={currentTrack?.artist || 'Select a track'}
+                album={currentTrack?.album}
+                size="medium"
+                className="text-center"
+              />
+              {showVisualizer && (
+                <div className="w-full h-32">
+                  <Visualizer
+                    isPlaying={isPlaying}
+                    type={visualizerType}
+                    color={accentColor}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="space-y-4 mt-auto max-w-4xl mx-auto w-full">
+              <ProgressBar
+                position={position}
+                duration={duration}
+                onSeek={syncSeek}
+              />
+              <div className="flex items-center justify-between">
+                <PlaybackButtons
+                  isPlaying={isPlaying}
+                  shuffle={shuffle}
+                  repeat={repeat}
+                  onPlayPause={syncPlayPause}
+                  onPrevious={handlePrevious}
+                  onNext={handleNext}
+                  onShuffleToggle={handleShuffleToggle}
+                  onRepeatToggle={handleRepeatToggle}
+                />
+                <VolumeControl
+                  volume={volume}
+                  onVolumeChange={handleVolumeChange}
+                />
+              </div>
+            </div>
+          </div>
+          <LyricsQueuePanel
+            lyrics={lyrics.lyrics}
+            currentLineIndex={lyrics.currentLineIndex}
+            isLoading={lyrics.isLoading}
+            queue={queue}
+            currentTrack={currentTrack}
+            isPlaying={isPlaying}
+            onTrackSelect={playFromQueue}
+            onRemoveFromQueue={removeFromQueue}
+            onClearQueue={clearQueue}
+            className="w-96 shrink-0"
+            showLyrics={showLyrics}
+          />
+        </main>
+        {showSettings && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowSettings(false)}
+          >
+            <div 
+              className="bg-background rounded-2xl p-6 w-full max-w-sm shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-semibold">Settings</h2>
+                <button 
+                  onClick={() => setShowSettings(false)}
+                  className="p-2 hover:bg-secondary rounded-lg transition-colors"
+                >
+                  <Minimize2 className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <label className="text-sm font-medium">Visualizer</label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowVisualizer(!showVisualizer)}
+                      className={cn(
+                        'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                        showVisualizer 
+                          ? 'bg-primary text-primary-foreground' 
+                          : 'bg-secondary'
+                      )}
+                    >
+                      {showVisualizer ? 'On' : 'Off'}
+                    </button>
+                  </div>
+                  {showVisualizer && (
+                    <div className="grid grid-cols-3 gap-2">
+                      {(['bars', 'wave', 'circle'] as const).map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => setVisualizerType(type)}
+                          className={cn(
+                            'px-3 py-2 rounded-lg text-sm capitalize transition-colors',
+                            visualizerType === type
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-secondary hover:bg-secondary/80'
+                          )}
+                        >
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  <label className="text-sm font-medium">Lyrics</label>
+                  <button
+                    onClick={() => setShowLyrics(!showLyrics)}
+                    className={cn(
+                      'w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                      showLyrics 
+                        ? 'bg-primary text-primary-foreground' 
+                        : 'bg-secondary'
+                    )}
+                  >
+                    {showLyrics ? 'Show Lyrics' : 'Hide Lyrics'}
+                  </button>
+                  <div className="grid grid-cols-3 gap-2 mt-2">
+                    {(['lrclib', 'netease', 'ovh'] as const).map((source) => (
+                      <button
+                        key={source}
+                        onClick={() => setLyricsSource(source)}
+                        className={cn(
+                          'px-2 py-1.5 rounded-lg text-[10px] uppercase font-bold transition-colors',
+                          lyricsSource === source
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-secondary hover:bg-secondary/80'
+                        )}
+                      >
+                        {source}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-3 pt-4 border-t">
+                  <label className="text-sm font-medium flex items-center justify-between">
+                    Room Sync
+                    {roomSync && <span className="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded font-mono">{roomId}</span>}
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={toggleRoomSync}
+                      className={cn(
+                        'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                        roomSync 
+                          ? 'bg-primary text-primary-foreground' 
+                          : 'bg-secondary'
+                      )}
+                    >
+                      {roomSync ? 'Disable Sync' : 'Enable Sync'}
+                    </button>
+                    {roomSync && (
+                      <button
+                        onClick={copyShareLink}
+                        className="px-4 py-2 rounded-lg bg-secondary text-sm font-medium hover:bg-secondary/80"
+                      >
+                        Copy Link
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Share your link to sync playback with others in real-time.
+                  </p>
+                </div>
+                <div className="space-y-3 pt-4 border-t">
+                  <label className="text-sm font-medium">Account</label>
+                  {spotifyAuth.isAuthenticated && (
+                    <button
+                      onClick={spotifyAuth.logout}
+                      className="w-full px-4 py-2 rounded-lg text-sm font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+                    >
+                      Disconnect Spotify
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {showThemeSettings && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowThemeSettings(false)}
+          >
+            <div 
+              className="bg-background rounded-2xl p-6 w-full max-w-sm shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <Palette className="w-5 h-5" />
+                  Theme
+                </h2>
+                <button 
+                  onClick={() => setShowThemeSettings(false)}
+                  className="p-2 hover:bg-secondary rounded-lg transition-colors"
+                >
+                  <Minimize2 className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setTheme('dark')}
+                    className={cn(
+                      'p-4 rounded-xl border-2 transition-all',
+                      theme === 'dark'
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-primary/50'
+                    )}
+                  >
+                    <div className="w-full h-12 rounded-lg bg-zinc-900 mb-3" />
+                    <span className="text-sm font-medium">Dark</span>
+                  </button>
+                  <button
+                    onClick={() => setTheme('album-accent')}
+                    className={cn(
+                      'p-4 rounded-xl border-2 transition-all',
+                      theme === 'album-accent'
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-primary/50'
+                    )}
+                  >
+                    <div 
+                      className="w-full h-12 rounded-lg mb-3"
+                      style={{ 
+                        background: `linear-gradient(135deg, ${accentColor}40, ${accentColor}20)` 
+                      }}
+                    />
+                    <span className="text-sm font-medium">Album Accent</span>
+                  </button>
+                </div>
+                {theme === 'album-accent' && (
+                  <div className="space-y-2">
+                    <label className="text-sm text-muted-foreground">Accent Color</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="color"
+                        value={accentColor}
+                        onChange={(e) => setAccentColor(e.target.value)}
+                        className="w-10 h-10 rounded-lg cursor-pointer"
+                      />
+                      <input
+                        type="text"
+                        value={accentColor}
+                        onChange={(e) => setAccentColor(e.target.value)}
+                        className="flex-1 px-3 py-2 rounded-lg bg-secondary text-sm"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Color is automatically extracted from album artwork when available
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      <TVMode
+        isActive={tvMode}
+        currentTrack={currentTrack}
+        isPlaying={isPlaying}
+        position={position}
+        duration={duration}
+        volume={volume}
+        lyrics={lyrics.lyrics}
+        currentLineIndex={lyrics.currentLineIndex}
+        onPlayPause={syncPlayPause}
+        onExit={() => setTvMode(false)}
+        onVolumeChange={handleVolumeChange}
+        onSeek={syncSeek}
+      />
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
+  );
+}
