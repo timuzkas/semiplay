@@ -19,6 +19,17 @@ bun install
 bun dev
 ```
 
+**docker / podman**
+```bash
+# using docker
+docker compose up --build -d
+
+# using podman
+podman-compose up --build -d
+# or
+podman compose up --build -d
+```
+
 ### environment (`app/server/.env`)
 you'll need these for the youtube account sync:
 - `GOOGLE_CLIENT_ID`
