@@ -666,6 +666,12 @@ function AppContent() {
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+            <button
+              onClick={() => setShowTerms(true)}
+              className="text-[10px] text-muted-foreground/30 hover:text-muted-foreground transition-colors ml-1 mt-1 uppercase font-bold tracking-tighter"
+            >
+              Privacy
+            </button>
           </div>
           <ServiceSelector
             services={services}
