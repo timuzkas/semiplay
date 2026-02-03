@@ -12,6 +12,14 @@ const server = http.createServer(app);
 const PORT = process.env.PORT || 3001;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
+// Debug logging for environment variables
+console.log('--- Server Startup ---');
+console.log('PORT:', PORT);
+console.log('FRONTEND_URL:', FRONTEND_URL);
+console.log('GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID ? `${process.env.GOOGLE_CLIENT_ID.substring(0, 10)}...` : 'MISSING');
+console.log('GOOGLE_CLIENT_SECRET:', process.env.GOOGLE_CLIENT_SECRET ? 'PRESENT' : 'MISSING');
+console.log('----------------------');
+
 // OAuth2 Client setup
 // Note: We initialize without a fixed redirectUri here, we'll provide it per request
 const oauth2Client = new google.auth.OAuth2(
