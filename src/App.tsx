@@ -6,8 +6,8 @@ import {
   Settings,
   Monitor,
   Palette,
-  ChevronUp,
   Github,
+  ChevronUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Drawer } from "vaul";
@@ -108,9 +108,7 @@ function AppContent() {
   const lastLocalActionTimeRef = useRef<number>(0);
   const lastAppliedRemoteTimestampRef = useRef<number>(0);
   const isApplyingSyncRef = useRef(false);
-  
-  // ROBUST JOINING LOGIC
-  const [isJoining, setIsJoining] = useState(false);
+  const isFirstSyncRef = useRef(true);
   const pendingSyncRef = useRef<{ trackId: string; position: number; isPlaying: boolean } | null>(null);
 
   const handlePlayPause = useCallback(() => {
@@ -127,21 +125,20 @@ function AppContent() {
     const { roomId: rid, roomSync: rs, currentTrack: ct, position: p, isPlaying: ip, queue: q } = stateRef.current;
     if (!socket || !rid || !rs || isApplyingSyncRef.current) return;
 
-    // Join Guard: Never broadcast periodic state if still joining!
-    // This prevents joiners from resetting the room to position 0.
     const isManual = Object.keys(overrides).length > 0;
+    const isJoining = isFirstSyncRef.current;
+    
     if (isJoining && !isManual) return;
-
     if (isManual) {
       lastLocalActionTimeRef.current = Date.now();
-      setIsJoining(false); 
+      isFirstSyncRef.current = false;
     }
 
     socket.emit("update-state", {
       roomId: rid,
       state: { track: ct, position: p, isPlaying: ip, queue: q, timestamp: Date.now(), sender: socket.id, ...overrides }
     });
-  }, [socket, isJoining]);
+  }, [socket]);
 
   const syncPlayPause = useCallback(() => {
     const newIsPlaying = !isPlaying;
@@ -159,7 +156,7 @@ function AppContent() {
       const newId = Math.random().toString(36).substring(2, 7).toUpperCase();
       setRoomId(newId);
       setRoomSync(true);
-      setIsJoining(true);
+      isFirstSyncRef.current = true;
       socket?.emit("join-room", newId);
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.set("share", newId);
@@ -167,7 +164,7 @@ function AppContent() {
     } else {
       setRoomSync(false);
       setRoomId(null);
-      setIsJoining(false);
+      isFirstSyncRef.current = false;
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.delete("share");
       window.history.pushState({}, "", newUrl);
@@ -191,39 +188,26 @@ function AppContent() {
     if (shareId) {
       setRoomId(shareId);
       setRoomSync(true);
-      setIsJoining(true);
+      isFirstSyncRef.current = true;
       s.emit("join-room", shareId);
     }
 
     return () => { s.disconnect(); };
   }, []);
 
-  // PERSISTENT JOIN CATCH-UP
   useEffect(() => {
-    if (!isJoining || !pendingSyncRef.current || !youtubePlayer.isReady) return;
-
-    const target = pendingSyncRef.current;
-    
-    // We try to apply the sync every second until we successfully start
-    const interval = setInterval(() => {
-      // Ensure track matches before seeking
-      if (youtubePlayer.currentTrack?.id === target.trackId) {
-        console.log("[Sync] Catching up joiner to:", target.position);
-        handleSeek(target.position);
-        if (target.isPlaying) youtubePlayer.play();
+    if (pendingSyncRef.current && youtubePlayer.isReady && youtubePlayer.currentTrack?.id === pendingSyncRef.current.trackId) {
+      const { position: p, isPlaying: ip } = pendingSyncRef.current;
+      const timer = setTimeout(() => {
+        handleSeek(p);
+        if (ip) youtubePlayer.play();
         else youtubePlayer.pause();
-        
-        // Once we've applied it once while ready, give it 2s to settle then end joining mode
-        setTimeout(() => {
-          setIsJoining(false);
-          pendingSyncRef.current = null;
-        }, 2000);
-        clearInterval(interval);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isJoining, youtubePlayer.isReady, youtubePlayer.currentTrack?.id, handleSeek, youtubePlayer]);
+        pendingSyncRef.current = null;
+        setTimeout(() => { isFirstSyncRef.current = false; }, 2000);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [youtubePlayer.isReady, youtubePlayer.currentTrack?.id, handleSeek, youtubePlayer]);
 
   useEffect(() => {
     if (!socket || !roomSync || !roomId) return;
@@ -251,15 +235,13 @@ function AppContent() {
         setQueue(state.queue);
       }
 
-      if (isJoining && state.track) {
-        // Store target for the persistent catch-up loop
+      if (isFirstSyncRef.current && state.track) {
         pendingSyncRef.current = {
           trackId: state.track.id,
           position: state.position || 0,
           isPlaying: state.isPlaying ?? true
         };
       } else if (!trackChanged) {
-        // Normal sync
         if (typeof state.position === "number" && Math.abs(state.position - stateRef.current.position) > 8000) {
           handleSeek(state.position);
         }
@@ -274,6 +256,7 @@ function AppContent() {
         }
       }
 
+      isFirstSyncRef.current = false;
       setTimeout(() => { isApplyingSyncRef.current = false; }, 1000);
     };
 
@@ -283,17 +266,17 @@ function AppContent() {
       socket.off("sync-state", handleSync);
       socket.off("request-state");
     };
-  }, [socket, roomSync, roomId, youtubePlayer, spotifyPlayer, handleSeek, broadcastState, isJoining]);
+  }, [socket, roomSync, roomId, youtubePlayer, spotifyPlayer, handleSeek, broadcastState]);
 
   useEffect(() => {
     if (roomSync && roomId && socket) broadcastState();
   }, [roomSync, roomId, !!socket, broadcastState]);
 
   useEffect(() => {
-    if (!roomSync || !isPlaying || isApplyingSyncRef.current || isJoining) return;
+    if (!roomSync || !isPlaying || isApplyingSyncRef.current || isFirstSyncRef.current) return;
     const interval = setInterval(() => broadcastState(), 10000);
     return () => clearInterval(interval);
-  }, [roomSync, isPlaying, broadcastState, isJoining]);
+  }, [roomSync, isPlaying, broadcastState]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -459,7 +442,7 @@ function AppContent() {
             </div>
             <div className="space-y-4 mt-auto max-w-4xl mx-auto w-full pb-4 md:pb-0">
               <ProgressBar position={position} duration={duration} onSeek={syncSeek} />
-              <div className="flex flex-col md:flex-row items-center justify-between gap-4 md:gap-0">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-4 md:gap-0 relative">
                 <div className="w-full md:w-auto flex justify-center order-1 md:order-none">
                   <PlaybackButtons isPlaying={isPlaying} shuffle={shuffle} repeat={repeat} onPlayPause={syncPlayPause} onPrevious={handlePrevious} onNext={handleNext} onShuffleToggle={handleShuffleToggle} onRepeatToggle={handleRepeatToggle} className="scale-90 md:scale-100" />
                 </div>
@@ -472,31 +455,44 @@ function AppContent() {
               <a href="/terms" className="hover:text-primary transition-colors uppercase font-bold tracking-tighter text-[10px]">Privacy & Terms</a>
             </footer>
           </div>
-          {showLyrics && (
-            <LyricsQueuePanel lyrics={lyrics.lyrics} currentLineIndex={lyrics.currentLineIndex} isLoading={lyrics.isLoading} queue={queue} currentTrack={currentTrack} isPlaying={isPlaying} onTrackSelect={playFromQueue} onRemoveFromQueue={removeFromQueue} onClearQueue={clearQueue} className="hidden lg:flex w-80 xl:w-96 shrink-0 text-white" showLyrics={showLyrics} />
-          )}
+          
+          <LyricsQueuePanel 
+            lyrics={lyrics.lyrics} 
+            currentLineIndex={lyrics.currentLineIndex} 
+            isLoading={lyrics.isLoading} 
+            queue={queue} 
+            currentTrack={currentTrack} 
+            isPlaying={isPlaying} 
+            onTrackSelect={playFromQueue} 
+            onRemoveFromQueue={removeFromQueue} 
+            onClearQueue={clearQueue} 
+            className="hidden lg:flex w-80 xl:w-96 shrink-0 text-white" 
+            showLyrics={showLyrics} 
+          />
         </main>
 
-        {/* Mobile Queue Drawer */}
-        <div className="lg:hidden shrink-0 border-t bg-secondary/5 backdrop-blur-sm px-4 py-2">
+        <div className="lg:hidden fixed bottom-12 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-[300px]">
           <Drawer.Root>
             <Drawer.Trigger asChild>
-              <button className="w-full flex items-center justify-between py-2 text-white/60 hover:text-white transition-colors">
-                <div className="flex items-center gap-2">
-                  <ChevronUp className="w-4 h-4" />
-                  <span className="text-xs font-bold uppercase tracking-widest">Queue</span>
+              <button className="w-full flex items-center justify-between px-6 py-3 bg-white/10 backdrop-blur-xl border border-white/10 rounded-full shadow-2xl animate-in slide-in-from-bottom-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center">
+                    <ChevronUp className="w-3.5 h-3.5 text-primary" />
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/80">Open Queue</span>
                 </div>
                 {queue.length > 0 && (
-                  <span className="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded-full font-bold">
-                    {queue.length}
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <div className="w-1 h-1 rounded-full bg-primary animate-pulse" />
+                    <span className="text-[10px] font-bold text-primary">{queue.length}</span>
+                  </div>
                 )}
               </button>
             </Drawer.Trigger>
             <Drawer.Portal>
-              <Drawer.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[150]" />
-              <Drawer.Content className="bg-background border-t border-white/10 flex flex-col rounded-t-[32px] h-[90%] mt-24 fixed bottom-0 left-0 right-0 z-[151] outline-none">
-                <div className="mx-auto w-12 h-1.5 flex-shrink-0 rounded-full bg-white/10 my-4" />
+              <Drawer.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150]" />
+              <Drawer.Content className="bg-[#0a0a0a] border-t border-white/5 flex flex-col rounded-t-[40px] h-[92%] fixed bottom-0 left-0 right-0 z-[151] outline-none shadow-2xl">
+                <div className="mx-auto w-12 h-1.5 flex-shrink-0 rounded-full bg-white/10 my-6" />
                 <div className="flex-1 overflow-hidden">
                   <LyricsQueuePanel 
                     lyrics={lyrics.lyrics} 
@@ -508,8 +504,9 @@ function AppContent() {
                     onTrackSelect={playFromQueue} 
                     onRemoveFromQueue={removeFromQueue} 
                     onClearQueue={clearQueue} 
-                    className="w-full h-full text-white" 
-                    showLyrics={true} 
+                    className="w-full h-full text-white border-none bg-transparent" 
+                    showLyrics={showLyrics}
+                    isMobileDrawer={true}
                   />
                 </div>
               </Drawer.Content>
