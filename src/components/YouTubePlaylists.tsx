@@ -111,11 +111,19 @@ export function YouTubePlaylists({ accessToken, onAddToQueue, onAddTracksToQueue
       if (entries[0].isIntersecting) {
         loadMoreTracks();
       }
-    }, { threshold: 0.5 });
+    }, { 
+      threshold: 0.1,
+      rootMargin: '100px' // Start loading before reaching the very bottom
+    });
 
-    if (loadMoreRef.current) observer.observe(loadMoreRef.current);
-    return () => observer.disconnect();
-  }, [selectedPlaylist, nextPageToken, isLoadingMore]);
+    const currentRef = loadMoreRef.current;
+    if (currentRef) observer.observe(currentRef);
+    
+    return () => {
+      if (currentRef) observer.unobserve(currentRef);
+      observer.disconnect();
+    };
+  }, [selectedPlaylist, nextPageToken, isLoadingMore, tracks.length]);
 
   const loadMoreTracks = async () => {
     if (!selectedPlaylist || !nextPageToken || isLoadingMore) return;
