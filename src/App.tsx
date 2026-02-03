@@ -94,6 +94,7 @@ function AppContent() {
   const lastSyncTimeRef = useRef<number>(0);
   const lastAppliedRemoteTimestampRef = useRef<number>(0);
   const lastLocalActionTimeRef = useRef<number>(0);
+  const lastRemoteSyncTimeRef = useRef<number>(0);
   const isFirstSyncRef = useRef(true);
 
   useEffect(() => {
@@ -101,32 +102,6 @@ function AppContent() {
       setYoutubeConnected(true);
     }
   }, []);
-
-  const toggleRoomSync = useCallback(() => {
-    if (!roomSync) {
-      const newId = Math.random().toString(36).substring(2, 7).toUpperCase();
-      setRoomId(newId);
-      setRoomSync(true);
-      isFirstSyncRef.current = true;
-      socket?.emit("join-room", newId);
-      const newUrl = new URL(window.location.href);
-      newUrl.searchParams.set("share", newId);
-      window.history.pushState({}, "", newUrl);
-    } else {
-      setRoomSync(false);
-      setRoomId(null);
-      const newUrl = new URL(window.location.href);
-      newUrl.searchParams.delete("share");
-      window.history.pushState({}, "", newUrl);
-    }
-  }, [roomSync, socket]);
-
-  const copyShareLink = useCallback(() => {
-    if (roomId) {
-      const url = `${window.location.origin}${window.location.pathname}?share=${roomId}`;
-      navigator.clipboard.writeText(url);
-    }
-  }, [roomId]);
 
   const spotifyPlayer = useSpotifyPlayer({
     accessToken: spotifyAuth.accessToken,
@@ -190,13 +165,43 @@ function AppContent() {
     [activeService, spotifyPlayer, youtubePlayer],
   );
 
+  const broadcastState = useCallback(
+    (overrides: any = {}) => {
+      if (!socket || !roomSync || !roomId) return;
+
+      const now = Date.now();
+      const isManualAction = Object.keys(overrides).length > 0;
+
+      if (isApplyingSyncRef.current && !isManualAction) return;
+      if (!isManualAction && (now - lastRemoteSyncTimeRef.current < 2000)) return;
+
+      if (isManualAction) {
+        lastLocalActionTimeRef.current = now;
+        isApplyingSyncRef.current = false;
+      }
+
+      const state = {
+        track: currentTrack,
+        position,
+        isPlaying,
+        queue,
+        timestamp: now,
+        sender: socket.id,
+        ...overrides,
+      };
+
+      socket.emit("update-state", { roomId, state });
+    },
+    [socket, roomSync, roomId, currentTrack, position, isPlaying, queue],
+  );
+
   const syncPlayPause = useCallback(() => {
     const newIsPlaying = !isPlaying;
     handlePlayPause();
     if (roomSync) {
       broadcastState({ isPlaying: newIsPlaying });
     }
-  }, [handlePlayPause, roomSync, isPlaying]);
+  }, [handlePlayPause, roomSync, isPlaying, broadcastState]);
 
   const syncSeek = useCallback(
     (pos: number) => {
@@ -205,7 +210,33 @@ function AppContent() {
         broadcastState({ position: pos });
       }
     },
-    [handleSeek, roomSync]);
+    [handleSeek, roomSync, broadcastState]);
+
+  const toggleRoomSync = useCallback(() => {
+    if (!roomSync) {
+      const newId = Math.random().toString(36).substring(2, 7).toUpperCase();
+      setRoomId(newId);
+      setRoomSync(true);
+      isFirstSyncRef.current = true;
+      socket?.emit("join-room", newId);
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.set("share", newId);
+      window.history.pushState({}, "", newUrl);
+    } else {
+      setRoomSync(false);
+      setRoomId(null);
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete("share");
+      window.history.pushState({}, "", newUrl);
+    }
+  }, [roomSync, socket]);
+
+  const copyShareLink = useCallback(() => {
+    if (roomId) {
+      const url = `${window.location.origin}${window.location.pathname}?share=${roomId}`;
+      navigator.clipboard.writeText(url);
+    }
+  }, [roomId]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -246,29 +277,6 @@ function AppContent() {
     };
   }, []);
 
-  const broadcastState = useCallback(
-    (overrides: any = {}) => {
-      if (!socket || !roomSync || !roomId || isApplyingSyncRef.current) return;
-
-      if (Object.keys(overrides).length > 0) {
-        lastLocalActionTimeRef.current = Date.now();
-      }
-
-      const state = {
-        track: currentTrack,
-        position,
-        isPlaying,
-        queue,
-        timestamp: Date.now(),
-        sender: socket.id,
-        ...overrides,
-      };
-
-      socket.emit("update-state", { roomId, state });
-    },
-    [socket, roomSync, roomId, currentTrack, position, isPlaying, queue],
-  );
-
   useEffect(() => {
     if (!socket || !roomSync || !roomId) return;
 
@@ -276,20 +284,22 @@ function AppContent() {
       if (state.sender === socket.id) return;
       if (state.timestamp <= lastAppliedRemoteTimestampRef.current) return;
       
-      const isRecentLocalAction = Date.now() - lastLocalActionTimeRef.current < 5000;
-      if (Date.now() - lastSyncTimeRef.current < 500) return;
+      const now = Date.now();
+      const isRecentLocalAction = now - lastLocalActionTimeRef.current < 5000;
+      if (now - lastSyncTimeRef.current < 500) return;
 
       isApplyingSyncRef.current = true;
       lastAppliedRemoteTimestampRef.current = state.timestamp;
+      lastRemoteSyncTimeRef.current = now;
 
       let trackChanged = false;
 
       if (state.track && state.track.id !== currentTrack?.id) {
-        console.log("[Sync] Applying new track:", state.track.name);
         if (state.track.source === "youtube") {
           setActiveService("youtube");
           youtubePlayer.playTrack(state.track);
           trackChanged = true;
+          isFirstSyncRef.current = true;
         }
       }
 
@@ -305,7 +315,6 @@ function AppContent() {
         }
 
         if (typeof state.isPlaying === "boolean" && state.isPlaying !== isPlaying) {
-          console.log("[Sync] Setting playback to:", state.isPlaying);
           if (state.isPlaying) {
             if (activeService === "youtube") youtubePlayer.play();
             else spotifyPlayer.togglePlay();
@@ -317,15 +326,13 @@ function AppContent() {
       }
 
       isFirstSyncRef.current = false;
-      lastSyncTimeRef.current = Date.now();
+      lastSyncTimeRef.current = now;
       setTimeout(() => {
         isApplyingSyncRef.current = false;
-      }, 1000);
+      }, 800);
     };
 
-    const handleRequestState = () => {
-      broadcastState();
-    };
+    const handleRequestState = () => broadcastState();
 
     socket.on("sync-state", handleSync);
     socket.on("request-state", handleRequestState);
@@ -344,6 +351,8 @@ function AppContent() {
     queue,
     handleSeek,
     youtubePlayer,
+    spotifyPlayer,
+    activeService,
     broadcastState,
   ]);
 
