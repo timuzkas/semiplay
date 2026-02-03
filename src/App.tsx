@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Components
 import { AlbumArtwork } from "@/components/AlbumArtwork";
 import { TrackInfo } from "@/components/TrackInfo";
 import { ProgressBar } from "@/components/ProgressBar";
@@ -30,7 +29,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// Hooks
 import { useSpotifyAuth } from "@/hooks/useSpotifyAuth";
 import { useSpotifyPlayer } from "@/hooks/useSpotifyPlayer";
 import { useYouTubePlayer } from "@/hooks/useYouTubePlayer";
@@ -40,7 +38,6 @@ import { io, Socket } from "socket.io-client";
 
 import type { Track } from "@/types/music";
 
-// Spotify Icon Component
 function SpotifyIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -53,12 +50,10 @@ function AppContent() {
   const { theme, setTheme, accentColor, setAccentColor } = useTheme();
   const { extractColor } = useAlbumColor();
 
-  // Simple routing for /terms
   if (window.location.pathname === "/terms") {
     return <Terms fullPage />;
   }
   
-  // Set default theme to album-accent on first load
   useEffect(() => {
     const saved = localStorage.getItem("music-visualizer-theme");
     if (!saved) {
@@ -66,16 +61,16 @@ function AppContent() {
     }
   }, [setTheme]);
 
-  // Auth states
   const spotifyAuth = useSpotifyAuth();
   const [youtubeConnected, setYoutubeConnected] = useState(false);
 
-  // Active service
   const [activeService, setActiveService] = useState<"spotify" | "youtube">(
     "youtube",
   );
 
-  // UI states
+  const [shuffle, setShuffle] = useState(false);
+  const [repeat, setRepeat] = useState<"off" | "track" | "all">("off");
+
   const [showSettings, setShowSettings] = useState(false);
   const [showThemeSettings, setShowThemeSettings] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
@@ -89,16 +84,13 @@ function AppContent() {
     "lrclib" | "netease" | "ovh"
   >("lrclib");
 
-  // Queue
   const [queue, setQueue] = useState<Track[]>([]);
 
-  // Room Sync
   const [roomSync, setRoomSync] = useState(false);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
   const isApplyingSyncRef = useRef(false);
 
-  // Auto-connect YouTube if share link is used
   useEffect(() => {
     if (new URLSearchParams(window.location.search).has("share")) {
       setYoutubeConnected(true);
@@ -111,7 +103,6 @@ function AppContent() {
       setRoomId(newId);
       setRoomSync(true);
       socket?.emit("join-room", newId);
-      // Update URL without reload
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.set("share", newId);
       window.history.pushState({}, "", newUrl);
@@ -128,19 +119,15 @@ function AppContent() {
     if (roomId) {
       const url = `${window.location.origin}${window.location.pathname}?share=${roomId}`;
       navigator.clipboard.writeText(url);
-      // Optional: Add a toast notification here if you have one
     }
   }, [roomId]);
 
-  // Spotify player
   const spotifyPlayer = useSpotifyPlayer({
     accessToken: spotifyAuth.accessToken,
   });
 
-  // YouTube player
   const youtubePlayer = useYouTubePlayer();
 
-  // Current track info
   const currentTrack: Track | null =
     activeService === "spotify"
       ? spotifyPlayer.currentTrack
@@ -197,10 +184,8 @@ function AppContent() {
     [activeService, spotifyPlayer, youtubePlayer],
   );
 
-  // Global Spacebar listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if user is typing in an input or textarea
       if (
         e.target instanceof HTMLInputElement || 
         e.target instanceof HTMLTextAreaElement ||
@@ -219,7 +204,6 @@ function AppContent() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handlePlayPause]);
 
-  // Initialize Socket
   useEffect(() => {
     const api_url = import.meta.env.VITE_API_URL || "http://localhost:3001";
     const s = io(api_url);
@@ -241,7 +225,6 @@ function AppContent() {
   const lastSyncTimeRef = useRef<number>(0);
   const lastAppliedRemoteTimestampRef = useRef<number>(0);
 
-  // Broadcast changes immediately
   const broadcastState = useCallback(
     (overrides: any = {}) => {
       if (!socket || !roomSync || !roomId || isApplyingSyncRef.current) return;
@@ -256,33 +239,24 @@ function AppContent() {
         ...overrides,
       };
 
-      // NOTE: We do NOT sync volume intentionally to respect individual device preferences
       socket.emit("update-state", { roomId, state });
     },
     [socket, roomSync, roomId, currentTrack, position, isPlaying, queue],
   );
 
-  // Sync Logic
   useEffect(() => {
     if (!socket || !roomSync || !roomId) return;
 
     const handleSync = (state: any) => {
-      // 1. Ignore our own messages
       if (state.sender === socket.id) return;
-
-      // 2. Ordering: only apply if we haven't applied a newer one (prevents drift)
       if (state.timestamp <= lastAppliedRemoteTimestampRef.current) return;
-
-      // 3. Cooldown for performance
       if (Date.now() - lastSyncTimeRef.current < 500) return;
 
-      console.log("[Sync] Applying remote state", state.track?.name);
       isApplyingSyncRef.current = true;
       lastAppliedRemoteTimestampRef.current = state.timestamp;
 
       let trackChanged = false;
 
-      // Track Sync
       if (state.track && state.track.id !== currentTrack?.id) {
         if (state.track.source === "youtube") {
           setActiveService("youtube");
@@ -291,12 +265,10 @@ function AppContent() {
         }
       }
 
-      // Queue Sync - Only if it differs
       if (state.queue && JSON.stringify(state.queue) !== JSON.stringify(queue)) {
         setQueue(state.queue);
       }
 
-      // Only sync position and playback state if track didn't just change
       if (!trackChanged) {
         if (
           typeof state.position === "number" &&
@@ -321,14 +293,12 @@ function AppContent() {
 
       lastSyncTimeRef.current = Date.now();
 
-      // Release lock quickly so user can interact
       setTimeout(() => {
         isApplyingSyncRef.current = false;
       }, 1000);
     };
 
     const handleRequestState = () => {
-      console.log("[Sync] Responding to state request");
       broadcastState();
     };
 
@@ -353,29 +323,22 @@ function AppContent() {
     broadcastState,
   ]);
 
-  // Initial broadcast when joining or enabling room sync
   useEffect(() => {
     if (roomSync && roomId && socket) {
       broadcastState();
     }
-  }, [roomSync, roomId, !!socket]); // Only trigger when room sync is toggled or room ID is set
+  }, [roomSync, roomId, !!socket, broadcastState]);
 
-  // Periodic position broadcast
   useEffect(() => {
     if (!roomSync || !isPlaying || isApplyingSyncRef.current) return;
-    const interval = setInterval(() => broadcastState(), 10000); // Less frequent periodic sync
+    const interval = setInterval(() => broadcastState(), 10000);
     return () => clearInterval(interval);
   }, [roomSync, isPlaying, broadcastState]);
 
-  // Handle Playback Change Syncs
   const syncPlayPause = useCallback(() => {
     if (isApplyingSyncRef.current) return;
-
-    // We want to broadcast the state AFTER the toggle.
-    // Since handlePlayPause doesn't return the new state, we anticipate it.
     const newIsPlaying = !isPlaying;
     handlePlayPause();
-
     if (roomSync) {
       broadcastState({ isPlaying: newIsPlaying });
     }
@@ -392,14 +355,12 @@ function AppContent() {
     [handleSeek, roomSync, broadcastState],
   );
 
-  // Sync queue changes too
   useEffect(() => {
     if (roomSync && !isApplyingSyncRef.current) {
       broadcastState();
     }
   }, [queue.length, roomSync, broadcastState]);
 
-  // Lyrics
   const lyrics = useUnifiedLyrics({
     trackName: currentTrack?.name || null,
     artistName: currentTrack?.artist || null,
@@ -410,7 +371,6 @@ function AppContent() {
     source: lyricsSource,
   });
 
-  // Auto-extract accent color from album artwork
   useEffect(() => {
     if (theme === "album-accent" && currentTrack?.artwork) {
       extractColor(currentTrack.artwork).then((color) => {
@@ -419,14 +379,12 @@ function AppContent() {
     }
   }, [currentTrack?.artwork, theme, extractColor, setAccentColor]);
 
-  // Handle OAuth callback
   useEffect(() => {
     if (window.location.hash.includes("access_token")) {
       spotifyAuth.handleCallback();
     }
   }, [spotifyAuth]);
 
-  // Combined TV/Fullscreen toggle
   const toggleTVMode = useCallback(async () => {
     try {
       if (!document.fullscreenElement) {
@@ -441,7 +399,6 @@ function AppContent() {
     }
   }, []);
 
-  // Listen for fullscreen changes to sync tvMode
   useEffect(() => {
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement && tvMode) {
@@ -453,7 +410,6 @@ function AppContent() {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, [tvMode]);
 
-  // Queue management
   const addToQueue = useCallback(
     (track: Track) => {
       const newQueue = [...queue, track];
@@ -491,7 +447,6 @@ function AppContent() {
       }
       setQueue((prev) => prev.filter((_, i) => i !== index));
       if (roomSync) {
-        // Direct broadcast with the new track to establish authority
         broadcastState({ track, isPlaying: true, position: 0 });
       }
     },
@@ -523,23 +478,6 @@ function AppContent() {
     [activeService, spotifyPlayer, youtubePlayer],
   );
 
-  // Shuffle and repeat
-  const [shuffle, setShuffle] = useState(false);
-  const [repeat, setRepeat] = useState<"off" | "track" | "all">("off");
-
-  const handleShuffleToggle = useCallback(() => {
-    setShuffle((prev) => !prev);
-  }, []);
-
-  const handleRepeatToggle = useCallback(() => {
-    setRepeat((prev) => {
-      if (prev === "off") return "all";
-      if (prev === "all") return "track";
-      return "off";
-    });
-  }, []);
-
-  // Auto-play from queue when track ends
   useEffect(() => {
     if (duration > 0 && position >= duration - 1000) {
       if (repeat === "track") {
@@ -547,11 +485,7 @@ function AppContent() {
         if (!isPlaying) handlePlayPause();
       } else if (queue.length > 0) {
         playFromQueue(queue[0], 0);
-      } else if (repeat === "all") {
-        // Simple loop back to previous track if logic exists, for now handleNext
-        handleNext();
       } else {
-        // End of playback or default behavior
         handleNext();
       }
     }
@@ -567,7 +501,6 @@ function AppContent() {
     handleNext,
   ]);
 
-  // Service selector
   const services = [
     {
       id: "spotify" as const,
@@ -583,7 +516,6 @@ function AppContent() {
     },
   ];
 
-  // Login screen check
   const hasYtToken = !!localStorage.getItem("yt_access_token");
   const showOnboarding =
     !spotifyAuth.isAuthenticated &&
@@ -591,13 +523,24 @@ function AppContent() {
     !new URLSearchParams(window.location.search).get("share") &&
     !hasYtToken;
 
-  // Auto-activate YouTube if token exists but not connected
   useEffect(() => {
     if (hasYtToken && !youtubeConnected) {
       setYoutubeConnected(true);
       setActiveService("youtube");
     }
   }, [hasYtToken, youtubeConnected]);
+
+  const handleShuffleToggle = useCallback(() => {
+    setShuffle((prev) => !prev);
+  }, []);
+
+  const handleRepeatToggle = useCallback(() => {
+    setRepeat((prev) => {
+      if (prev === "off") return "all";
+      if (prev === "all") return "track";
+      return "off";
+    });
+  }, []);
 
   if (showOnboarding) {
     return (
@@ -768,7 +711,6 @@ function AppContent() {
                   />
                 </div>
 
-                {/* Local Mute for Mobile, Full Volume for Desktop */}
                 <div className="md:block order-2 md:order-none">
                   <VolumeControl
                     volume={volume}
@@ -778,13 +720,8 @@ function AppContent() {
                 </div>
               </div>
             </div>
-            {/* Minimal Footer for Google Verification & GitHub */}
-            <footer className="mt-auto pt-8 flex items-center justify-between text-[10px] text-muted-foreground/30 shrink-0 px-2">
-              <a href="/terms" className="hover:text-primary transition-colors uppercase font-bold tracking-tighter">Privacy & Terms</a>
-              <a href="https://github.com/timuzkas/semiplay" target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-foreground transition-colors uppercase font-bold tracking-tighter">
-                <Github className="w-3 h-3" />
-                GitHub
-              </a>
+            <footer className="mt-auto pt-8 flex items-center justify-start text-[10px] text-muted-foreground/30 shrink-0 px-2 pb-2">
+              <a href="/terms" className="hover:text-primary transition-colors uppercase font-bold tracking-tighter text-[10px]">Privacy & Terms</a>
             </footer>
           </div>
           {showLyrics && (
@@ -809,7 +746,7 @@ function AppContent() {
             onClick={() => setShowSettings(false)}
           >
             <div
-              className="bg-background rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in modal-in"
+              className="bg-background rounded-2xl p-6 w-full max-sm:mx-4 max-w-sm shadow-2xl animate-in modal-in"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-6">
@@ -822,7 +759,6 @@ function AppContent() {
                 </button>
               </div>
               <div className="space-y-5">
-                {/* Room Settings */}
                 <div className="space-y-2.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
                     Room Sync
@@ -855,7 +791,6 @@ function AppContent() {
                   </div>
                 </div>
 
-                {/* Account Settings */}
                 <div className="space-y-2.5 pt-4 border-t">
                   <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Account</label>
                   <div className="grid grid-cols-1 gap-2">
@@ -896,7 +831,6 @@ function AppContent() {
                   </div>
                 </div>
 
-                {/* Lyrics & Visualization */}
                 <div className="space-y-4 pt-4 border-t">
                   <div className="space-y-2">
                     <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
@@ -963,7 +897,6 @@ function AppContent() {
                   </div>
                 </div>
 
-                {/* Footer */}
                 <div className="pt-4 border-t flex items-center justify-between">
                   <button
                     onClick={() => {
@@ -994,7 +927,7 @@ function AppContent() {
             onClick={() => setShowThemeSettings(false)}
           >
             <div
-              className="bg-background rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in modal-in"
+              className="bg-background rounded-2xl p-6 w-full max-sm:mx-4 max-w-sm shadow-2xl animate-in modal-in"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-6">
