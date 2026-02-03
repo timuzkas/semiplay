@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import type { Track } from '@/types/music';
-import { Play, Pause, Volume2, VolumeX } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, SkipBack, SkipForward } from 'lucide-react';
 import { ProgressBar } from '@/components/ProgressBar';
 
 interface TVModeProps {
@@ -14,6 +14,8 @@ interface TVModeProps {
   lyrics: { time: number; text: string }[];
   currentLineIndex: number;
   onPlayPause: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
   onExit: () => void;
   onVolumeChange: (volume: number) => void;
   onSeek: (position: number) => void;
@@ -29,6 +31,8 @@ export function TVMode({
   lyrics,
   currentLineIndex,
   onPlayPause,
+  onPrevious,
+  onNext,
   onExit,
   onVolumeChange,
   onSeek,
@@ -219,24 +223,47 @@ export function TVMode({
               </button>
             </div>
 
-            {/* Play/Pause */}
-            <div className="flex justify-center">
+            {/* Playback Controls */}
+            <div className="flex justify-center items-center gap-8">
+              {/* Previous */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPrevious();
+                }}
+                className="p-3 rounded-full hover:bg-white/10 text-white/70 transition-all hover:scale-110 active:scale-95"
+              >
+                <SkipBack className="w-8 h-8 fill-current" />
+              </button>
+
+              {/* Play/Pause */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onPlayPause();
                 }}
                 className={cn(
-                  'w-16 h-16 rounded-full flex items-center justify-center',
+                  'w-20 h-20 rounded-full flex items-center justify-center',
                   'bg-white text-black',
                   'hover:scale-105 active:scale-95 transition-all duration-200'
                 )}
               >
                 {isPlaying ? (
-                  <Pause className="w-7 h-7 fill-current" />
+                  <Pause className="w-9 h-9 fill-current" />
                 ) : (
-                  <Play className="w-7 h-7 fill-current ml-1" />
+                  <Play className="w-9 h-9 fill-current ml-1" />
                 )}
+              </button>
+
+              {/* Next */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNext();
+                }}
+                className="p-3 rounded-full hover:bg-white/10 text-white/70 transition-all hover:scale-110 active:scale-95"
+              >
+                <SkipForward className="w-8 h-8 fill-current" />
               </button>
             </div>
 

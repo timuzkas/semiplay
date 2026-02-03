@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ListMusic, Plus, Music, Search as SearchIcon, X, Heart } from 'lucide-react';
+import { Plus, Music, Search as SearchIcon, X, Heart, Play } from 'lucide-react';
 import type { Track } from '@/types/music';
 
 interface Playlist {
@@ -156,7 +156,7 @@ export function YouTubePlaylists({ accessToken, onAddToQueue, onPlayNow }: YouTu
                       onClick={() => onPlayNow(track)}
                       className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                     >
-                      <Plus className="w-4 h-4 text-white" />
+                      <Play className="w-4 h-4 text-white fill-white" />
                     </button>
                   </div>
                   <div className="flex-1 min-w-0">
@@ -165,9 +165,10 @@ export function YouTubePlaylists({ accessToken, onAddToQueue, onPlayNow }: YouTu
                   </div>
                   <button
                     onClick={() => onAddToQueue(track)}
-                    className="p-1.5 rounded-lg hover:bg-background opacity-0 group-hover:opacity-100 transition-all"
+                    className="flex items-center gap-1 px-2 py-1 rounded-md bg-secondary/50 hover:bg-primary hover:text-primary-foreground opacity-0 group-hover:opacity-100 transition-all text-[10px] font-bold uppercase"
                   >
-                    <ListMusic className="w-3.5 h-3.5" />
+                    <Plus className="w-3 h-3" />
+                    Add
                   </button>
                 </div>
               ))

@@ -1065,6 +1065,8 @@ function AppContent() {
         lyrics={lyrics.lyrics}
         currentLineIndex={lyrics.currentLineIndex}
         onPlayPause={syncPlayPause}
+        onPrevious={handlePrevious}
+        onNext={handleNext}
         onExit={() => setTvMode(false)}
         onVolumeChange={handleVolumeChange}
         onSeek={syncSeek}
