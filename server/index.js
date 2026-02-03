@@ -129,13 +129,23 @@ app.get("/api/youtube/playlistItems", async (req, res) => {
 
     const response = await youtube.playlistItems.list(params);
     
-    const tracks = response.data.items.map(item => ({
-      id: item.contentDetails.videoId,
-      name: item.snippet.title,
-      artist: item.snippet.videoOwnerChannelTitle || "YouTube Music",
-      artwork: item.snippet.thumbnails?.default?.url || item.snippet.thumbnails?.high?.url,
-      source: "youtube"
-    }));
+    const tracks = response.data.items.map(item => {
+      const thumbs = item.snippet.thumbnails;
+      // Pick the highest resolution available
+      const artwork = thumbs?.maxres?.url || 
+                     thumbs?.standard?.url || 
+                     thumbs?.high?.url || 
+                     thumbs?.medium?.url || 
+                     thumbs?.default?.url;
+
+      return {
+        id: item.contentDetails.videoId,
+        name: item.snippet.title,
+        artist: item.snippet.videoOwnerChannelTitle || "YouTube Music",
+        artwork: artwork,
+        source: "youtube"
+      };
+    });
 
     res.json({ 
       items: tracks,
@@ -209,18 +219,24 @@ app.post('/api/search', async (req, res) => {
     if (response && response.items) {
       const tracks = response.items
         .filter((item) => item.type === 'video' && item.id)
-        .map((item) => ({
-          id: item.id,
-          name: item.title || 'Unknown Title',
-          artist: item.channelTitle || 'Unknown Artist',
-          album: 'YouTube Music',
-          duration: item.length?.simpleText 
-            ? parseDuration(item.length.simpleText)
-            : 0,
-          artwork: item.thumbnail?.thumbnails?.[0]?.url || 
-                  `https://i.ytimg.com/vi/${item.id}/mqdefault.jpg`,
-          source: 'youtube',
-        }));
+        .map((item) => {
+          const thumbnails = item.thumbnail?.thumbnails || [];
+          const artwork = thumbnails.length > 0 
+            ? thumbnails[thumbnails.length - 1].url 
+            : `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`;
+
+          return {
+            id: item.id,
+            name: item.title || 'Unknown Title',
+            artist: item.channelTitle || 'Unknown Artist',
+            album: 'YouTube Music',
+            duration: item.length?.simpleText 
+              ? parseDuration(item.length.simpleText)
+              : 0,
+            artwork: artwork,
+            source: 'youtube',
+          };
+        });
 
       res.json({ items: tracks, nextPage: response.nextPage });
     } else {
