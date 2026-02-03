@@ -2,10 +2,92 @@ const express = require('express');
 const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
+const { google } = require('googleapis');
 const youtubesearchapi = require('youtube-search-api');
 
 const app = express();
 const server = http.createServer(app);
+
+// OAuth2 Client setup
+const oauth2Client = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3001/api/auth/callback'
+);
+
+const SCOPES = ['https://www.googleapis.com/auth/youtube.readonly'];
+
+app.use(cors());
+app.use(express.json());
+
+// OAuth Routes
+app.get('/api/auth/google', (req, res) => {
+  const url = oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    scope: SCOPES,
+  });
+  res.redirect(url);
+});
+
+app.get('/api/auth/callback', async (req, res) => {
+  const { code } = req.query;
+  try {
+    const { tokens } = await oauth2Client.getToken(code);
+    res.redirect(`http://localhost:5173/#yt_access_token=${tokens.access_token}`);
+  } catch (error) {
+    res.redirect('http://localhost:5173/?error=auth_failed');
+  }
+});
+
+app.get('/api/youtube/playlists', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'No token' });
+
+  const token = authHeader.split(' ')[1];
+  oauth2Client.setCredentials({ access_token: token });
+
+  const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+  try {
+    const response = await youtube.playlists.list({
+      part: 'snippet,contentDetails',
+      mine: true,
+      maxResults: 25,
+    });
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/youtube/playlistItems', async (req, res) => {
+  const { playlistId } = req.query;
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'No token' });
+
+  oauth2Client.setCredentials({ access_token: authHeader.split(' ')[1] });
+
+  const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+  try {
+    const response = await youtube.playlistItems.list({
+      part: 'snippet,contentDetails',
+      playlistId,
+      maxResults: 50,
+    });
+    
+    const tracks = response.data.items.map(item => ({
+      id: item.contentDetails.videoId,
+      name: item.snippet.title,
+      artist: item.snippet.videoOwnerChannelTitle || 'YouTube Music',
+      artwork: item.snippet.thumbnails?.default?.url || item.snippet.thumbnails?.high?.url,
+      source: 'youtube'
+    }));
+
+    res.json({ items: tracks });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 const io = new Server(server, {
   cors: {
     origin: "*",

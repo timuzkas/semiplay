@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Search, X, Play, Plus, Loader2 } from 'lucide-react';
+import { Search, X, Play, Plus, Loader2, Youtube, ListMusic } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Track } from '@/types/music';
+import { YouTubePlaylists } from './YouTubePlaylists';
 
 interface YouTubeSearchProps {
   onAddToQueue: (track: Track) => void;
@@ -17,8 +18,32 @@ export function YouTubeSearch({ onAddToQueue, onPlayNow, className }: YouTubeSea
   const [results, setResults] = useState<Track[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'search' | 'playlists'>('search');
+  const [ytAccessToken, setYtAccessToken] = useState<string | null>(
+    localStorage.getItem('yt_access_token')
+  );
+
   const inputRef = useRef<HTMLInputElement>(null);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Handle hash callback
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.includes('yt_access_token')) {
+      const params = new URLSearchParams(hash.replace('#', '?'));
+      const token = params.get('yt_access_token');
+      if (token) {
+        setYtAccessToken(token);
+        localStorage.setItem('yt_access_token', token);
+        window.location.hash = '';
+        setActiveTab('playlists');
+      }
+    }
+  }, []);
+
+  const handleConnect = () => {
+    window.location.href = `${API_URL}/api/auth/google`;
+  };
 
   const search = useCallback(async (searchQuery: string) => {
     if (!searchQuery.trim()) {
@@ -120,114 +145,170 @@ export function YouTubeSearch({ onAddToQueue, onPlayNow, className }: YouTubeSea
             )}
             onClick={e => e.stopPropagation()}
           >
-            {/* Search Input */}
-            <div className="flex items-center gap-3 px-4 py-4 border-b">
-              <Search className="w-5 h-5 text-muted-foreground" />
-              <input
-                ref={inputRef}
-                type="text"
-                value={query}
-                onChange={(e) => handleQueryChange(e.target.value)}
-                placeholder="Search YouTube Music..."
-                className="flex-1 bg-transparent outline-none text-foreground placeholder:text-muted-foreground"
-              />
-              {query && (
-                <button
-                  onClick={() => {
-                    setQuery('');
-                    setResults([]);
-                    inputRef.current?.focus();
-                  }}
-                  className="p-1 rounded-full hover:bg-secondary"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
+            {/* Tabs */}
+            <div className="flex border-b px-2">
+              <button
+                onClick={() => setActiveTab('search')}
+                className={cn(
+                  'flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors border-b-2',
+                  activeTab === 'search' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Search className="w-4 h-4" />
+                Search
+              </button>
+              <button
+                onClick={() => setActiveTab('playlists')}
+                className={cn(
+                  'flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors border-b-2',
+                  activeTab === 'playlists' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <ListMusic className="w-4 h-4" />
+                My Playlists
+              </button>
             </div>
 
-            {/* Results */}
-            <div className="max-h-[60vh] overflow-y-auto">
-              {isLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : error ? (
-                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                  <p className="text-sm">{error}</p>
-                </div>
-              ) : results.length === 0 ? (
-                query ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                    <Search className="w-12 h-12 mb-4 opacity-30" />
-                    <p className="text-sm">No results found</p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                    <Search className="w-12 h-12 mb-4 opacity-30" />
-                    <p className="text-sm">Type to search YouTube Music</p>
-                    <p className="text-xs mt-1 opacity-60">Try "Never Gonna Give You Up"</p>
-                  </div>
-                )
-              ) : (
-                <div className="py-2">
-                  {results.map((track) => (
-                    <div
-                      key={track.id}
-                      className="group flex items-center gap-3 px-4 py-3 hover:bg-secondary/50"
+            {activeTab === 'search' ? (
+              <>
+                {/* Search Input */}
+                <div className="flex items-center gap-3 px-4 py-4 border-b">
+                  <Search className="w-5 h-5 text-muted-foreground" />
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={query}
+                    onChange={(e) => handleQueryChange(e.target.value)}
+                    placeholder="Search YouTube Music..."
+                    className="flex-1 bg-transparent outline-none text-foreground placeholder:text-muted-foreground"
+                  />
+                  {query && (
+                    <button
+                      onClick={() => {
+                        setQuery('');
+                        setResults([]);
+                        inputRef.current?.focus();
+                      }}
+                      className="p-1 rounded-full hover:bg-secondary"
                     >
-                      {/* Artwork */}
-                      <div className="w-12 h-12 rounded-lg bg-secondary overflow-hidden flex-shrink-0">
-                        {track.artwork ? (
-                          <img
-                            src={track.artwork}
-                            alt={track.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <Play className="w-5 h-5 text-muted-foreground" />
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">
-                          {track.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {track.artist}
-                        </p>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => {
-                            onPlayNow(track);
-                            handleClose();
-                          }}
-                          className="p-2 rounded-lg hover:bg-primary/10 text-primary transition-colors"
-                          title="Play now"
-                        >
-                          <Play className="w-4 h-4 fill-current" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            onAddToQueue(track);
-                            handleClose();
-                          }}
-                          className="p-2 rounded-lg hover:bg-secondary transition-colors"
-                          title="Add to queue"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
-              )}
-            </div>
+
+                {/* Results */}
+                <div className="max-h-[60vh] overflow-y-auto scrollbar-hide">
+                  {isLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : error ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                      <p className="text-sm">{error}</p>
+                    </div>
+                  ) : results.length === 0 ? (
+                    query ? (
+                      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                        <Search className="w-12 h-12 mb-4 opacity-30" />
+                        <p className="text-sm">No results found</p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                        <Search className="w-12 h-12 mb-4 opacity-30" />
+                        <p className="text-sm">Type to search YouTube Music</p>
+                        <p className="text-xs mt-1 opacity-60">Try "Never Gonna Give You Up"</p>
+                      </div>
+                    )
+                  ) : (
+                    <div className="py-2">
+                      {results.map((track) => (
+                        <div
+                          key={track.id}
+                          className="group flex items-center gap-3 px-4 py-3 hover:bg-secondary/50"
+                        >
+                          {/* Artwork */}
+                          <div className="w-12 h-12 rounded-lg bg-secondary overflow-hidden flex-shrink-0">
+                            {track.artwork ? (
+                              <img
+                                src={track.artwork}
+                                alt={track.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Play className="w-5 h-5 text-muted-foreground" />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Info */}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">
+                              {track.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {track.artist}
+                            </p>
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => {
+                                onPlayNow(track);
+                                handleClose();
+                              }}
+                              className="p-2 rounded-lg hover:bg-primary/10 text-primary transition-colors"
+                              title="Play now"
+                            >
+                              <Play className="w-4 h-4 fill-current" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                onAddToQueue(track);
+                                handleClose();
+                              }}
+                              className="p-2 rounded-lg hover:bg-secondary transition-colors"
+                              title="Add to queue"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="min-h-[40vh] max-h-[60vh] flex flex-col">
+                {ytAccessToken ? (
+                  <YouTubePlaylists 
+                    accessToken={ytAccessToken}
+                    onAddToQueue={onAddToQueue}
+                    onPlayNow={onPlayNow}
+                  />
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
+                    <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center">
+                      <Youtube className="w-8 h-8 text-red-500" />
+                    </div>
+                    <div className="space-y-2">
+                      <h3 className="text-lg font-semibold">Connect YouTube Music</h3>
+                      <p className="text-sm text-muted-foreground max-w-[280px]">
+                        Link your Google account to access your library and playlists directly in semiplay.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleConnect}
+                      className="px-6 py-2.5 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-all active:scale-[0.98]"
+                    >
+                      Connect with Google
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
