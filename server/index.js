@@ -9,12 +9,25 @@ const youtubesearchapi = require('youtube-search-api');
 const app = express();
 const server = http.createServer(app);
 
+const PORT = process.env.PORT || 3001;
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+
 // OAuth2 Client setup
+// Note: We initialize without a fixed redirectUri here, we'll provide it per request
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET,
-  process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3001/api/auth/callback'
+  process.env.GOOGLE_CLIENT_SECRET
 );
+
+// Helper to get the correct redirect URI based on request
+function getRedirectUri(req) {
+  // If we are on production domain, use the production callback
+  if (req.get('host').includes('timuzkas.xyz')) {
+    return 'https://api.semi.timuzkas.xyz/api/auth/callback';
+  }
+  // Otherwise default to localhost
+  return 'http://localhost:3001/api/auth/callback';
+}
 
 const SCOPES = [
   'https://www.googleapis.com/auth/youtube.readonly',
@@ -29,6 +42,7 @@ app.get('/api/auth/google', (req, res) => {
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: SCOPES,
+    redirect_uri: getRedirectUri(req)
   });
   res.redirect(url);
 });
@@ -36,9 +50,13 @@ app.get('/api/auth/google', (req, res) => {
 app.get('/api/auth/callback', async (req, res) => {
   const { code } = req.query;
   try {
-    const { tokens } = await oauth2Client.getToken(code);
+    const { tokens } = await oauth2Client.getToken({
+      code,
+      redirect_uri: getRedirectUri(req)
+    });
     res.redirect(`${FRONTEND_URL}/#yt_access_token=${tokens.access_token}`);
   } catch (error) {
+    console.error('OAuth Error:', error);
     res.redirect(`${FRONTEND_URL}/?error=auth_failed`);
   }
 });
@@ -124,12 +142,6 @@ const io = new Server(server, {
     methods: ["GET", "POST"]
   }
 });
-
-const PORT = process.env.PORT || 3001;
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
-
-app.use(cors());
-app.use(express.json());
 
 // Rooms storage (in-memory)
 const rooms = new Map();
