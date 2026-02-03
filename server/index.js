@@ -106,24 +106,23 @@ app.get('/api/youtube/playlists', async (req, res) => {
   }
 });
 
-app.get('/api/youtube/playlistItems', async (req, res) => {
-  const { playlistId } = req.query;
+app.get("/api/youtube/playlistItems", async (req, res) => {
+  const { playlistId, pageToken } = req.query;
   const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ error: 'No token' });
+  if (!authHeader) return res.status(401).json({ error: "No token" });
 
-  oauth2Client.setCredentials({ access_token: authHeader.split(' ')[1] });
+  oauth2Client.setCredentials({ access_token: authHeader.split(" ")[1] });
 
-  const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+  const youtube = google.youtube({ version: "v3", auth: oauth2Client });
   try {
     const params = {
-      part: 'snippet,contentDetails',
+      part: "snippet,contentDetails",
       maxResults: 50,
+      pageToken: pageToken || undefined,
     };
 
-    if (playlistId === 'LL') {
-      // Special handling for Liked Music if playlistItems fails for LL
-      // Note: LL is technically a playlist but often needs different scope
-      params.playlistId = 'LL';
+    if (playlistId === "LL") {
+      params.playlistId = "LL";
     } else {
       params.playlistId = playlistId;
     }
@@ -133,12 +132,15 @@ app.get('/api/youtube/playlistItems', async (req, res) => {
     const tracks = response.data.items.map(item => ({
       id: item.contentDetails.videoId,
       name: item.snippet.title,
-      artist: item.snippet.videoOwnerChannelTitle || 'YouTube Music',
+      artist: item.snippet.videoOwnerChannelTitle || "YouTube Music",
       artwork: item.snippet.thumbnails?.default?.url || item.snippet.thumbnails?.high?.url,
-      source: 'youtube'
+      source: "youtube"
     }));
 
-    res.json({ items: tracks });
+    res.json({ 
+      items: tracks,
+      nextPageToken: response.data.nextPageToken 
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

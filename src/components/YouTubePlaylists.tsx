@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Plus, Music, Search as SearchIcon, X, Heart, Play } from 'lucide-react';
-import type { Track } from '@/types/music';
+import { useState, useEffect, useMemo, useRef } from "react";
+import { Plus, Music, Search as SearchIcon, X, Heart, Play, Loader2 } from "lucide-react";
+import type { Track } from "@/types/music";
 
 interface Playlist {
   id: string;
@@ -21,14 +21,20 @@ interface YouTubePlaylistsProps {
   onPlayNow: (track: Track) => void;
 }
 
+// Global cache for the session
+const playlistCache = new Map<string, { tracks: Track[]; nextToken: string | null }>();
+
 export function YouTubePlaylists({ accessToken, onAddToQueue, onPlayNow }: YouTubePlaylistsProps) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [selectedPlaylist, setSelectedPlaylist] = useState<string | null>(null);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
   const filteredPlaylists = useMemo(() => {
     return playlists.filter(p => p.snippet.title.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -41,6 +47,7 @@ export function YouTubePlaylists({ accessToken, onAddToQueue, onPlayNow }: YouTu
     );
   }, [tracks, searchQuery]);
 
+  // Fetch playlist list
   useEffect(() => {
     const fetchPlaylists = async () => {
       try {
@@ -50,27 +57,88 @@ export function YouTubePlaylists({ accessToken, onAddToQueue, onPlayNow }: YouTu
         const data = await res.json();
         setPlaylists(data.items || []);
       } catch (e) {
-        console.error('Failed to fetch playlists', e);
+        console.error("Failed to fetch playlists", e);
       }
     };
     if (accessToken) fetchPlaylists();
   }, [accessToken, API_URL]);
 
+  const fetchTracks = async (playlistId: string, token: string | null = null) => {
+    const query = new URLSearchParams({
+      playlistId,
+      ...(token && { pageToken: token })
+    }).toString();
+
+    const res = await fetch(`${API_URL}/api/youtube/playlistItems?${query}`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    return await res.json();
+  };
+
   const handlePlaylistClick = async (id: string) => {
     setSelectedPlaylist(id);
-    setSearchQuery('');
+    setSearchQuery("");
+    
+    // Check cache
+    if (playlistCache.has(id)) {
+      const cached = playlistCache.get(id)!;
+      setTracks(cached.tracks);
+      setNextPageToken(cached.nextToken);
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/youtube/playlistItems?playlistId=${id}`, {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      const data = await res.json();
-      setTracks(data.items || []);
+      const data = await fetchTracks(id);
+      const newTracks = data.items || [];
+      setTracks(newTracks);
+      setNextPageToken(data.nextPageToken || null);
+      
+      playlistCache.set(id, { tracks: newTracks, nextToken: data.nextPageToken || null });
     } catch (e) {
-      console.error('Failed to fetch playlist items', e);
+      console.error("Failed to fetch playlist items", e);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Infinite scroll observer
+  useEffect(() => {
+    if (!selectedPlaylist || !nextPageToken || isLoadingMore) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        loadMoreTracks();
+      }
+    }, { threshold: 0.5 });
+
+    if (loadMoreRef.current) observer.observe(loadMoreRef.current);
+    return () => observer.disconnect();
+  }, [selectedPlaylist, nextPageToken, isLoadingMore]);
+
+  const loadMoreTracks = async () => {
+    if (!selectedPlaylist || !nextPageToken || isLoadingMore) return;
+
+    setIsLoadingMore(true);
+    try {
+      const data = await fetchTracks(selectedPlaylist, nextPageToken);
+      const newTracks = [...tracks, ...(data.items || [])];
+      setTracks(newTracks);
+      setNextPageToken(data.nextPageToken || null);
+      
+      playlistCache.set(selectedPlaylist, { 
+        tracks: newTracks, 
+        nextToken: data.nextPageToken || null 
+      });
+    } catch (e) {
+      console.error("Failed to load more tracks", e);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
+  const handleAddAll = () => {
+    filteredTracks.forEach(track => onAddToQueue(track));
   };
 
   return (
@@ -83,11 +151,11 @@ export function YouTubePlaylists({ accessToken, onAddToQueue, onPlayNow }: YouTu
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={selectedPlaylist ? "Search songs..." : "Search playlists..."}
-            className="w-full bg-background/50 rounded-lg py-1.5 pl-8 pr-8 text-xs outline-none focus:ring-1 focus:ring-primary/50"
+            className="w-full bg-background/50 rounded-lg py-1.5 pl-8 pr-8 text-xs outline-none focus:ring-1 focus:ring-primary/50 text-white"
           />
           {searchQuery && (
             <button 
-              onClick={() => setSearchQuery('')}
+              onClick={() => setSearchQuery("")}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-secondary rounded-full"
             >
               <X className="w-3 h-3" />
@@ -105,7 +173,7 @@ export function YouTubePlaylists({ accessToken, onAddToQueue, onPlayNow }: YouTu
               className="flex items-center gap-3 p-2 rounded-xl hover:bg-secondary cursor-pointer transition-colors"
             >
               <div className="w-10 h-10 rounded-lg bg-secondary flex-shrink-0 overflow-hidden flex items-center justify-center">
-                {pl.id === 'LL' ? (
+                {pl.id === "LL" ? (
                   <div className="w-full h-full bg-primary/10 flex items-center justify-center">
                     <Heart className="w-5 h-5 text-primary fill-primary" />
                   </div>
@@ -114,8 +182,8 @@ export function YouTubePlaylists({ accessToken, onAddToQueue, onPlayNow }: YouTu
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium truncate">{pl.snippet.title}</p>
-                {pl.contentDetails.itemCount !== '?' && (
+                <p className="text-xs font-medium truncate text-white">{pl.snippet.title}</p>
+                {pl.contentDetails.itemCount !== "?" && (
                   <p className="text-[10px] text-muted-foreground">{pl.contentDetails.itemCount} tracks</p>
                 )}
               </div>
@@ -124,54 +192,72 @@ export function YouTubePlaylists({ accessToken, onAddToQueue, onPlayNow }: YouTu
         </div>
       ) : (
         <div className="flex flex-col flex-1 min-h-0">
-          <div className="p-3 border-b flex items-center gap-2 bg-secondary/5 shrink-0">
-            <button 
-              onClick={() => { setSelectedPlaylist(null); setSearchQuery(''); }}
-              className="text-[10px] uppercase font-bold hover:text-primary transition-colors"
-            >
-              ← Back
-            </button>
-            <span className="text-[10px] font-semibold truncate opacity-60">
-              {playlists.find(p => p.id === selectedPlaylist)?.snippet.title}
-            </span>
+          <div className="p-3 border-b flex items-center justify-between bg-secondary/5 shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <button 
+                onClick={() => { setSelectedPlaylist(null); setSearchQuery(""); }}
+                className="text-[10px] uppercase font-bold hover:text-primary transition-colors text-muted-foreground"
+              >
+                ← Back
+              </button>
+              <span className="text-[10px] font-semibold truncate opacity-60 text-white">
+                {playlists.find(p => p.id === selectedPlaylist)?.snippet.title}
+              </span>
+            </div>
+            {tracks.length > 0 && (
+              <button
+                onClick={handleAddAll}
+                className="text-[10px] uppercase font-black px-2 py-1 rounded bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground transition-all"
+              >
+                Add All
+              </button>
+            )}
           </div>
           <div className="flex-1 overflow-y-auto p-2 scrollbar-hide min-h-0">
             {isLoading ? (
               <div className="flex items-center justify-center h-full">
-                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <Loader2 className="w-6 h-6 text-primary animate-spin" />
               </div>
             ) : (
-              filteredTracks.map((track) => (
-                <div
-                  key={track.id}
-                  className="group flex items-center gap-3 p-2 rounded-lg hover:bg-secondary transition-colors"
-                >
-                  <div className="w-10 h-10 rounded bg-background/50 flex-shrink-0 relative overflow-hidden">
-                    {track.artwork ? (
-                      <img src={track.artwork} className="w-full h-full object-cover" alt="" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center"><Music className="w-4 h-4" /></div>
-                    )}
-                    <button 
-                      onClick={() => onPlayNow(track)}
-                      className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              <>
+                {filteredTracks.map((track) => (
+                  <div
+                    key={track.id}
+                    className="group flex items-center gap-3 p-2 rounded-lg hover:bg-secondary transition-colors"
+                  >
+                    <div className="w-10 h-10 rounded bg-background/50 flex-shrink-0 relative overflow-hidden">
+                      {track.artwork ? (
+                        <img src={track.artwork} className="w-full h-full object-cover" alt="" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center"><Music className="w-4 h-4 text-white" /></div>
+                      )}
+                      <button 
+                        onClick={() => onPlayNow(track)}
+                        className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Play className="w-4 h-4 text-white fill-white" />
+                      </button>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate text-white">{track.name}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{track.artist}</p>
+                    </div>
+                    <button
+                      onClick={() => onAddToQueue(track)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md bg-secondary/50 hover:bg-primary hover:text-primary-foreground opacity-0 group-hover:opacity-100 transition-all text-[10px] font-bold uppercase text-white"
                     >
-                      <Play className="w-4 h-4 text-white fill-white" />
+                      <Plus className="w-3 h-3" />
+                      Add
                     </button>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium truncate">{track.name}</p>
-                    <p className="text-[10px] text-muted-foreground truncate">{track.artist}</p>
+                ))}
+                
+                {nextPageToken && (
+                  <div ref={loadMoreRef} className="py-4 flex justify-center">
+                    <Loader2 className="w-4 h-4 text-primary animate-spin" />
                   </div>
-                  <button
-                    onClick={() => onAddToQueue(track)}
-                    className="flex items-center gap-1 px-2 py-1 rounded-md bg-secondary/50 hover:bg-primary hover:text-primary-foreground opacity-0 group-hover:opacity-100 transition-all text-[10px] font-bold uppercase"
-                  >
-                    <Plus className="w-3 h-3" />
-                    Add
-                  </button>
-                </div>
-              ))
+                )}
+              </>
             )}
           </div>
         </div>
@@ -179,4 +265,3 @@ export function YouTubePlaylists({ accessToken, onAddToQueue, onPlayNow }: YouTu
     </div>
   );
 }
-
