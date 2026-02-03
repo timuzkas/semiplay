@@ -107,6 +107,9 @@ function AppContent() {
   const lastAppliedRemoteTimestampRef = useRef<number>(0);
   const isApplyingSyncRef = useRef(false);
   const isFirstSyncRef = useRef(true);
+  
+  // Pending sync for joining clients
+  const pendingSyncRef = useRef<{ trackId: string; position: number; isPlaying: boolean } | null>(null);
 
   const handlePlayPause = useCallback(() => {
     if (activeService === "spotify") spotifyPlayer.togglePlay();
@@ -185,6 +188,18 @@ function AppContent() {
     return () => { s.disconnect(); };
   }, []);
 
+  // Effect to apply pending sync when player is ready
+  useEffect(() => {
+    if (pendingSyncRef.current && youtubePlayer.isReady && currentTrack?.id === pendingSyncRef.current.trackId) {
+      const { position: p, isPlaying: ip } = pendingSyncRef.current;
+      console.log("[Sync] Applying pending state for join:", p, ip);
+      handleSeek(p);
+      if (ip) youtubePlayer.play();
+      else youtubePlayer.pause();
+      pendingSyncRef.current = null;
+    }
+  }, [youtubePlayer.isReady, currentTrack?.id, handleSeek, youtubePlayer]);
+
   useEffect(() => {
     if (!socket || !roomSync || !roomId) return;
 
@@ -211,27 +226,27 @@ function AppContent() {
         setQueue(state.queue);
       }
 
-      // Initial Join Logic: Force position and playback even if track changed
       const isFirst = isFirstSyncRef.current;
-      if (!trackChanged || isFirst) {
-        const applyPlayback = () => {
-          if (typeof state.position === "number") handleSeek(state.position);
-          if (typeof state.isPlaying === "boolean") {
-            if (state.isPlaying) {
-              if (stateRef.current.activeService === "youtube") youtubePlayer.play();
-              else spotifyPlayer.togglePlay();
-            } else {
-              if (stateRef.current.activeService === "youtube") youtubePlayer.pause();
-              else spotifyPlayer.togglePlay();
-            }
-          }
+      
+      if (isFirst && trackChanged && state.track) {
+        // If track changed on first sync (join), store pending state
+        pendingSyncRef.current = {
+          trackId: state.track.id,
+          position: state.position || 0,
+          isPlaying: state.isPlaying ?? false
         };
-
-        if (isFirst && trackChanged) {
-          // Give player a moment to mount before seeking on join
-          setTimeout(applyPlayback, 1000);
-        } else {
-          applyPlayback();
+      } else if (!trackChanged || isFirst) {
+        if (typeof state.position === "number" && Math.abs(state.position - stateRef.current.position) > 8000) {
+          handleSeek(state.position);
+        }
+        if (typeof state.isPlaying === "boolean" && state.isPlaying !== stateRef.current.isPlaying) {
+          if (state.isPlaying) {
+            if (stateRef.current.activeService === "youtube") youtubePlayer.play();
+            else spotifyPlayer.togglePlay();
+          } else {
+            if (stateRef.current.activeService === "youtube") youtubePlayer.pause();
+            else spotifyPlayer.togglePlay();
+          }
         }
       }
 
@@ -369,8 +384,8 @@ function AppContent() {
 
   if (showOnboarding) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-6 text-white">
-        <div className="max-w-md w-full space-y-8 text-center">
+      <div className="min-h-screen bg-background flex items-center justify-center p-6 text-white text-center">
+        <div className="max-w-md w-full space-y-8">
           <div className="flex justify-center"><div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center"><Music2 className="w-10 h-10 text-primary" /></div></div>
           <div className="space-y-2">
             <h1 className="text-4xl font-instrument tracking-tight">semiplay</h1>
@@ -411,8 +426,8 @@ function AppContent() {
         </header>
 
         <main className="flex-1 flex overflow-hidden relative">
-          <div className="flex-1 flex flex-col p-4 md:p-6 min-w-0 overflow-y-auto scrollbar-hide">
-            <div className="flex flex-col items-center justify-center flex-1 gap-6 md:gap-8 py-4 md:py-8 text-white">
+          <div className="flex-1 flex flex-col p-4 md:p-6 min-w-0 overflow-y-auto scrollbar-hide text-white text-center">
+            <div className="flex flex-col items-center justify-center flex-1 gap-6 md:gap-8 py-4 md:py-8">
               <AlbumArtwork src={currentTrack?.artwork} alt={currentTrack?.name} size="large" isPlaying={isPlaying} />
               <TrackInfo name={currentTrack?.name || "Not Playing"} artist={currentTrack?.artist || "Select a track"} album={currentTrack?.album} size="medium" className="text-center" />
               {showVisualizer && (
@@ -501,18 +516,18 @@ function AppContent() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in text-white" onClick={() => setShowThemeSettings(false)}>
             <div className="bg-background rounded-2xl p-6 w-full max-sm:mx-4 max-w-sm shadow-2xl animate-in modal-in" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold flex items-center gap-2"><Palette className="w-5 h-5" /> Theme</h2>
+                <h2 className="text-lg font-semibold flex items-center gap-2 text-white"><Palette className="w-5 h-5" /> Theme</h2>
                 <button onClick={() => setShowThemeSettings(false)} className="p-2 hover:bg-secondary rounded-lg transition-colors"><Minimize2 className="w-4 h-4" /></button>
               </div>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <button onClick={() => setTheme("dark")} className={cn("p-4 rounded-xl border-2 transition-all", theme === "dark" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50")}>
                     <div className="w-full h-12 rounded-lg bg-zinc-900 mb-3" />
-                    <span className="text-sm font-medium">Dark</span>
+                    <span className="text-sm font-medium text-white">Dark</span>
                   </button>
                   <button onClick={() => setTheme("album-accent")} className={cn("p-4 rounded-xl border-2 transition-all", theme === "album-accent" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50")}>
                     <div className="w-full h-12 rounded-lg mb-3" style={{ background: `linear-gradient(135deg, ${accentColor}40, ${accentColor}20)` }} />
-                    <span className="text-sm font-medium">Album Accent</span>
+                    <span className="text-sm font-medium text-white">Album Accent</span>
                   </button>
                 </div>
                 {theme === "album-accent" && (
@@ -520,7 +535,7 @@ function AppContent() {
                     <label className="text-sm text-muted-foreground">Accent Color</label>
                     <div className="flex gap-2">
                       <input type="color" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} className="w-10 h-10 rounded-lg cursor-pointer" />
-                      <input type="text" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} className="flex-1 px-3 py-2 rounded-lg bg-secondary text-sm" />
+                      <input type="text" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} className="flex-1 px-3 py-2 rounded-lg bg-secondary text-sm text-white" />
                     </div>
                   </div>
                 )}
