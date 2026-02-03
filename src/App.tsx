@@ -6,9 +6,11 @@ import {
   Settings,
   Monitor,
   Palette,
+  ChevronUp,
   Github,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Drawer } from "vaul";
 
 import { AlbumArtwork } from "@/components/AlbumArtwork";
 import { TrackInfo } from "@/components/TrackInfo";
@@ -474,6 +476,46 @@ function AppContent() {
             <LyricsQueuePanel lyrics={lyrics.lyrics} currentLineIndex={lyrics.currentLineIndex} isLoading={lyrics.isLoading} queue={queue} currentTrack={currentTrack} isPlaying={isPlaying} onTrackSelect={playFromQueue} onRemoveFromQueue={removeFromQueue} onClearQueue={clearQueue} className="hidden lg:flex w-80 xl:w-96 shrink-0 text-white" showLyrics={showLyrics} />
           )}
         </main>
+
+        {/* Mobile Queue Drawer */}
+        <div className="lg:hidden shrink-0 border-t bg-secondary/5 backdrop-blur-sm px-4 py-2">
+          <Drawer.Root>
+            <Drawer.Trigger asChild>
+              <button className="w-full flex items-center justify-between py-2 text-white/60 hover:text-white transition-colors">
+                <div className="flex items-center gap-2">
+                  <ChevronUp className="w-4 h-4" />
+                  <span className="text-xs font-bold uppercase tracking-widest">Queue</span>
+                </div>
+                {queue.length > 0 && (
+                  <span className="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded-full font-bold">
+                    {queue.length}
+                  </span>
+                )}
+              </button>
+            </Drawer.Trigger>
+            <Drawer.Portal>
+              <Drawer.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[150]" />
+              <Drawer.Content className="bg-background border-t border-white/10 flex flex-col rounded-t-[32px] h-[90%] mt-24 fixed bottom-0 left-0 right-0 z-[151] outline-none">
+                <div className="mx-auto w-12 h-1.5 flex-shrink-0 rounded-full bg-white/10 my-4" />
+                <div className="flex-1 overflow-hidden">
+                  <LyricsQueuePanel 
+                    lyrics={lyrics.lyrics} 
+                    currentLineIndex={lyrics.currentLineIndex} 
+                    isLoading={lyrics.isLoading} 
+                    queue={queue} 
+                    currentTrack={currentTrack} 
+                    isPlaying={isPlaying} 
+                    onTrackSelect={playFromQueue} 
+                    onRemoveFromQueue={removeFromQueue} 
+                    onClearQueue={clearQueue} 
+                    className="w-full h-full text-white" 
+                    showLyrics={true} 
+                  />
+                </div>
+              </Drawer.Content>
+            </Drawer.Portal>
+          </Drawer.Root>
+        </div>
 
         {showSettings && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in text-white" onClick={() => setShowSettings(false)}>
