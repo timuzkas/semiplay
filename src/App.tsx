@@ -53,6 +53,11 @@ function AppContent() {
   const { theme, setTheme, accentColor, setAccentColor } = useTheme();
   const { extractColor } = useAlbumColor();
 
+  // Simple routing for /terms
+  if (window.location.pathname === "/terms") {
+    return <Terms fullPage />;
+  }
+  
   // Set default theme to album-accent on first load
   useEffect(() => {
     const saved = localStorage.getItem("music-visualizer-theme");
@@ -192,6 +197,28 @@ function AppContent() {
     [activeService, spotifyPlayer, youtubePlayer],
   );
 
+  // Global Spacebar listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input or textarea
+      if (
+        e.target instanceof HTMLInputElement || 
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target as HTMLElement).isContentEditable
+      ) {
+        return;
+      }
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        handlePlayPause();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handlePlayPause]);
+
   // Initialize Socket
   useEffect(() => {
     const api_url = import.meta.env.VITE_API_URL || "http://localhost:3001";
@@ -212,29 +239,19 @@ function AppContent() {
   }, []);
 
   const lastSyncTimeRef = useRef<number>(0);
-  const lastUserActionTimestampRef = useRef<number>(0);
-  const lastQueueActionTimestampRef = useRef<number>(0);
+  const lastAppliedRemoteTimestampRef = useRef<number>(0);
 
   // Broadcast changes immediately
   const broadcastState = useCallback(
     (overrides: any = {}) => {
       if (!socket || !roomSync || !roomId || isApplyingSyncRef.current) return;
 
-      const now = Date.now();
-      // If this is a direct user action (overrides provided), update our local action timestamp
-      if (Object.keys(overrides).length > 0) {
-        lastUserActionTimestampRef.current = now;
-        if ("queue" in overrides) {
-          lastQueueActionTimestampRef.current = now;
-        }
-      }
-
       const state = {
         track: currentTrack,
         position,
         isPlaying,
         queue,
-        timestamp: now,
+        timestamp: Date.now(),
         sender: socket.id,
         ...overrides,
       };
@@ -253,16 +270,15 @@ function AppContent() {
       // 1. Ignore our own messages
       if (state.sender === socket.id) return;
 
-      // 2. Conflict Resolution: If the incoming state is older than our last manual action, ignore it
-      if (state.timestamp < lastUserActionTimestampRef.current - 500) {
-        return;
-      }
+      // 2. Ordering: only apply if we haven't applied a newer one (prevents drift)
+      if (state.timestamp <= lastAppliedRemoteTimestampRef.current) return;
 
-      // 3. Cooldown: Avoid rapid-fire updates
-      if (Date.now() - lastSyncTimeRef.current < 800) return;
+      // 3. Cooldown for performance
+      if (Date.now() - lastSyncTimeRef.current < 500) return;
 
       console.log("[Sync] Applying remote state", state.track?.name);
       isApplyingSyncRef.current = true;
+      lastAppliedRemoteTimestampRef.current = state.timestamp;
 
       let trackChanged = false;
 
@@ -275,12 +291,8 @@ function AppContent() {
         }
       }
 
-      // Queue Sync - Only if we haven't modified our queue recently
-      if (
-        state.queue &&
-        JSON.stringify(state.queue) !== JSON.stringify(queue) &&
-        state.timestamp > lastQueueActionTimestampRef.current
-      ) {
+      // Queue Sync - Only if it differs
+      if (state.queue && JSON.stringify(state.queue) !== JSON.stringify(queue)) {
         setQueue(state.queue);
       }
 
@@ -290,7 +302,6 @@ function AppContent() {
           typeof state.position === "number" &&
           Math.abs(state.position - position) > 8000
         ) {
-          console.log("[Sync] Adjusting position", state.position);
           handleSeek(state.position);
         }
 
@@ -298,10 +309,6 @@ function AppContent() {
           typeof state.isPlaying === "boolean" &&
           state.isPlaying !== isPlaying
         ) {
-          console.log(
-            "[Sync] Adjusting playback state to",
-            state.isPlaying ? "PLAYING" : "PAUSED",
-          );
           if (state.isPlaying) {
             if (activeService === "youtube") youtubePlayer.play();
             else spotifyPlayer.togglePlay();
@@ -314,9 +321,10 @@ function AppContent() {
 
       lastSyncTimeRef.current = Date.now();
 
+      // Release lock quickly so user can interact
       setTimeout(() => {
         isApplyingSyncRef.current = false;
-      }, 2000);
+      }, 1000);
     };
 
     const handleRequestState = () => {
@@ -666,12 +674,6 @@ function AppContent() {
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            <button
-              onClick={() => setShowTerms(true)}
-              className="text-[10px] text-muted-foreground/30 hover:text-muted-foreground transition-colors ml-1 mt-1 uppercase font-bold tracking-tighter"
-            >
-              Privacy
-            </button>
           </div>
           <ServiceSelector
             services={services}
@@ -776,6 +778,14 @@ function AppContent() {
                 </div>
               </div>
             </div>
+            {/* Minimal Footer for Google Verification & GitHub */}
+            <footer className="mt-auto pt-8 flex items-center justify-between text-[10px] text-muted-foreground/30 shrink-0 px-2">
+              <a href="/terms" className="hover:text-primary transition-colors uppercase font-bold tracking-tighter">Privacy & Terms</a>
+              <a href="https://github.com/timuzkas/semiplay" target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-foreground transition-colors uppercase font-bold tracking-tighter">
+                <Github className="w-3 h-3" />
+                GitHub
+              </a>
+            </footer>
           </div>
           {showLyrics && (
             <LyricsQueuePanel
