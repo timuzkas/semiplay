@@ -89,7 +89,12 @@ function AppContent() {
   const [roomSync, setRoomSync] = useState(false);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
+  
+  // SYNC REFS
   const isApplyingSyncRef = useRef(false);
+  const lastSyncTimeRef = useRef<number>(0);
+  const lastAppliedRemoteTimestampRef = useRef<number>(0);
+  const lastLocalActionTimeRef = useRef<number>(0);
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).has("share")) {
@@ -196,13 +201,13 @@ function AppContent() {
 
       if (e.code === 'Space') {
         e.preventDefault();
-        handlePlayPause();
+        syncPlayPause(); // Use sync version to ensure it broadcasts correctly
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handlePlayPause]);
+  }, [handlePlayPause]); // Note: dependency updated below via syncPlayPause
 
   useEffect(() => {
     const api_url = import.meta.env.VITE_API_URL || "http://localhost:3001";
@@ -222,14 +227,11 @@ function AppContent() {
     };
   }, []);
 
-  const lastSyncTimeRef = useRef<number>(0);
-  const lastAppliedRemoteTimestampRef = useRef<number>(0);
-  const lastLocalActionTimeRef = useRef<number>(0);
-
   const broadcastState = useCallback(
     (overrides: any = {}) => {
       if (!socket || !roomSync || !roomId || isApplyingSyncRef.current) return;
 
+      // Manual action (overrides provided) resets the priority timer
       if (Object.keys(overrides).length > 0) {
         lastLocalActionTimeRef.current = Date.now();
       }
@@ -256,7 +258,9 @@ function AppContent() {
       if (state.sender === socket.id) return;
       if (state.timestamp <= lastAppliedRemoteTimestampRef.current) return;
       
-      const isRecentLocalAction = Date.now() - lastLocalActionTimeRef.current < 2500;
+      // If user recently interacted (<5s), ignore remote playback updates to prevent fighting
+      const isRecentLocalAction = Date.now() - lastLocalActionTimeRef.current < 5000;
+      
       if (Date.now() - lastSyncTimeRef.current < 500) return;
 
       isApplyingSyncRef.current = true;
@@ -264,7 +268,9 @@ function AppContent() {
 
       let trackChanged = false;
 
+      // Track Sync - ALWAYS apply track changes as they are high-priority
       if (state.track && state.track.id !== currentTrack?.id) {
+        console.log("[Sync] Applying new track:", state.track.name);
         if (state.track.source === "youtube") {
           setActiveService("youtube");
           youtubePlayer.playTrack(state.track);
@@ -272,22 +278,19 @@ function AppContent() {
         }
       }
 
+      // Queue Sync
       if (state.queue && JSON.stringify(state.queue) !== JSON.stringify(queue)) {
         setQueue(state.queue);
       }
 
+      // Playback Sync - Only if no recent local action
       if (!trackChanged && !isRecentLocalAction) {
-        if (
-          typeof state.position === "number" &&
-          Math.abs(state.position - position) > 8000
-        ) {
+        if (typeof state.position === "number" && Math.abs(state.position - position) > 8000) {
           handleSeek(state.position);
         }
 
-        if (
-          typeof state.isPlaying === "boolean" &&
-          state.isPlaying !== isPlaying
-        ) {
+        if (typeof state.isPlaying === "boolean" && state.isPlaying !== isPlaying) {
+          console.log("[Sync] Setting playback to:", state.isPlaying);
           if (state.isPlaying) {
             if (activeService === "youtube") youtubePlayer.play();
             else spotifyPlayer.togglePlay();
@@ -296,10 +299,11 @@ function AppContent() {
             else spotifyPlayer.togglePlay();
           }
         }
+      } else if (isRecentLocalAction) {
+        console.log("[Sync] Ignored remote playback state due to recent user action");
       }
 
       lastSyncTimeRef.current = Date.now();
-
       setTimeout(() => {
         isApplyingSyncRef.current = false;
       }, 1000);
@@ -320,12 +324,11 @@ function AppContent() {
     socket,
     roomSync,
     roomId,
-    currentTrack,
+    currentTrack?.id,
     position,
     isPlaying,
     queue,
     handleSeek,
-    handlePlayPause,
     youtubePlayer,
     broadcastState,
   ]);
@@ -343,7 +346,7 @@ function AppContent() {
   }, [roomSync, isPlaying, broadcastState]);
 
   const syncPlayPause = useCallback(() => {
-    if (isApplyingSyncRef.current) return;
+    // REMOVED isApplyingSync check here so user can ALWAYS override
     const newIsPlaying = !isPlaying;
     handlePlayPause();
     if (roomSync) {
@@ -353,7 +356,7 @@ function AppContent() {
 
   const syncSeek = useCallback(
     (pos: number) => {
-      if (isApplyingSyncRef.current) return;
+      // User can always seek
       handleSeek(pos);
       if (roomSync) {
         broadcastState({ position: pos });
