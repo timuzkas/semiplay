@@ -107,8 +107,6 @@ function AppContent() {
   const lastAppliedRemoteTimestampRef = useRef<number>(0);
   const isApplyingSyncRef = useRef(false);
   const isFirstSyncRef = useRef(true);
-  
-  // Pending sync for joining clients
   const pendingSyncRef = useRef<{ trackId: string; position: number; isPlaying: boolean } | null>(null);
 
   const handlePlayPause = useCallback(() => {
@@ -188,17 +186,23 @@ function AppContent() {
     return () => { s.disconnect(); };
   }, []);
 
-  // Effect to apply pending sync when player is ready
+  // FORCE JOIN SYNC EFFECT
+  // This watches for the player to be ready and apply the correct mid-song position
   useEffect(() => {
-    if (pendingSyncRef.current && youtubePlayer.isReady && currentTrack?.id === pendingSyncRef.current.trackId) {
+    if (pendingSyncRef.current && youtubePlayer.isReady && youtubePlayer.currentTrack?.id === pendingSyncRef.current.trackId) {
       const { position: p, isPlaying: ip } = pendingSyncRef.current;
-      console.log("[Sync] Applying pending state for join:", p, ip);
-      handleSeek(p);
-      if (ip) youtubePlayer.play();
-      else youtubePlayer.pause();
-      pendingSyncRef.current = null;
+      
+      const timer = setTimeout(() => {
+        console.log("[Sync] Mid-song join initialization:", p, ip);
+        handleSeek(p);
+        if (ip) youtubePlayer.play();
+        else youtubePlayer.pause();
+        pendingSyncRef.current = null;
+      }, 1500); // Give it a buffer to ensure buffer is ready for seek
+
+      return () => clearTimeout(timer);
     }
-  }, [youtubePlayer.isReady, currentTrack?.id, handleSeek, youtubePlayer]);
+  }, [youtubePlayer.isReady, youtubePlayer.currentTrack?.id, handleSeek, youtubePlayer]);
 
   useEffect(() => {
     if (!socket || !roomSync || !roomId) return;
@@ -214,7 +218,8 @@ function AppContent() {
       lastAppliedRemoteTimestampRef.current = state.timestamp;
 
       let trackChanged = false;
-      if (state.track && state.track.id !== stateRef.current.currentTrack?.id) {
+      // Use direct player track to avoid state derivation lag
+      if (state.track && state.track.id !== youtubePlayer.currentTrack?.id) {
         if (state.track.source === "youtube") {
           setActiveService("youtube");
           youtubePlayer.playTrack(state.track);
@@ -228,14 +233,15 @@ function AppContent() {
 
       const isFirst = isFirstSyncRef.current;
       
-      if (isFirst && trackChanged && state.track) {
-        // If track changed on first sync (join), store pending state
+      if (isFirst && state.track) {
+        // Always store join state to be applied by the "Force Join Sync" effect
         pendingSyncRef.current = {
           trackId: state.track.id,
           position: state.position || 0,
-          isPlaying: state.isPlaying ?? false
+          isPlaying: state.isPlaying ?? true
         };
-      } else if (!trackChanged || isFirst) {
+      } else if (!trackChanged) {
+        // Normal mid-play sync
         if (typeof state.position === "number" && Math.abs(state.position - stateRef.current.position) > 8000) {
           handleSeek(state.position);
         }
