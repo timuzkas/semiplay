@@ -576,10 +576,20 @@ function AppContent() {
   ];
 
   // Login screen check
+  const hasYtToken = !!localStorage.getItem("yt_access_token");
   const showOnboarding =
     !spotifyAuth.isAuthenticated &&
     !youtubeConnected &&
-    !new URLSearchParams(window.location.search).get("share");
+    !new URLSearchParams(window.location.search).get("share") &&
+    !hasYtToken;
+
+  // Auto-activate YouTube if token exists but not connected
+  useEffect(() => {
+    if (hasYtToken && !youtubeConnected) {
+      setYoutubeConnected(true);
+      setActiveService("youtube");
+    }
+  }, [hasYtToken, youtubeConnected]);
 
   if (showOnboarding) {
     return (
@@ -600,18 +610,20 @@ function AppContent() {
           </div>
           <div className="space-y-3">
             <button
-              onClick={spotifyAuth.login}
+              disabled
               className={cn(
                 "w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl",
-                "bg-[#1DB954] text-white font-medium",
-                "hover:opacity-90 active:scale-[0.98] transition-all duration-200",
+                "bg-zinc-800 text-muted-foreground font-medium cursor-not-allowed opacity-50",
               )}
             >
               <SpotifyIcon className="w-5 h-5" />
-              Connect with Spotify
+              Spotify coming soon
             </button>
             <button
-              onClick={() => setYoutubeConnected(true)}
+              onClick={() => {
+                setYoutubeConnected(true);
+                setActiveService("youtube");
+              }}
               className={cn(
                 "w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl",
                 "bg-secondary text-foreground font-medium",
@@ -623,7 +635,7 @@ function AppContent() {
             </button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Spotify Premium required for full playback control
+            Connect your account in settings to access your playlists
           </p>
         </div>
       </div>
