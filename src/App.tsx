@@ -471,20 +471,20 @@ function AppContent() {
           />
         </main>
 
-        <div className="lg:hidden fixed bottom-12 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-[300px]">
+        <div className="lg:hidden fixed bottom-2 left-1/2 -translate-x-1/2 z-[100] w-[94%] max-w-[440px]">
           <Drawer.Root>
             <Drawer.Trigger asChild>
-              <button className="w-full flex items-center justify-between px-6 py-3 bg-white/10 backdrop-blur-xl border border-white/10 rounded-full shadow-2xl animate-in slide-in-from-bottom-4">
+              <button className="w-full flex items-center justify-between px-6 py-4 bg-zinc-900/90 backdrop-blur-2xl border border-white/10 rounded-[24px] shadow-[0_8px_32px_rgba(0,0,0,0.8)] ring-1 ring-white/5 animate-in slide-in-from-bottom-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center">
-                    <ChevronUp className="w-3.5 h-3.5 text-primary" />
+                  <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                    <ChevronUp className="w-4 h-4 text-primary" />
                   </div>
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/80">Open Queue</span>
+                  <span className="text-[11px] font-black uppercase tracking-[0.25em] text-white/90">Up Next</span>
                 </div>
                 {queue.length > 0 && (
-                  <div className="flex items-center gap-1">
-                    <div className="w-1 h-1 rounded-full bg-primary animate-pulse" />
-                    <span className="text-[10px] font-bold text-primary">{queue.length}</span>
+                  <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-white/5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                    <span className="text-[11px] font-bold text-white">{queue.length} tracks</span>
                   </div>
                 )}
               </button>
