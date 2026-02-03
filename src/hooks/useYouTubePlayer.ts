@@ -197,47 +197,72 @@ export function useYouTubePlayer() {
 
   // Play a track
   const playTrack = useCallback((track: Track) => {
-    if (!playerRef.current) {
-      // Queue track for when player is ready
+    if (!playerRef.current || !isReady) {
       pendingTrackRef.current = track;
       return;
     }
 
-    setCurrentTrack(track);
-    playerRef.current.loadVideoById(track.id);
-    setPlaybackState((prev) => ({ ...prev, isPlaying: true }));
-  }, []);
+    try {
+      setCurrentTrack(track);
+      playerRef.current.loadVideoById(track.id);
+      setPlaybackState((prev) => ({ ...prev, isPlaying: true }));
+    } catch (e) {
+      console.error('Error playing track:', e);
+    }
+  }, [isReady]);
 
   // Control functions
   const togglePlay = useCallback(() => {
-    if (!playerRef.current) return;
+    if (!playerRef.current || !isReady) return;
 
-    if (playbackState.isPlaying) {
-      playerRef.current.pauseVideo();
-    } else {
-      playerRef.current.playVideo();
+    try {
+      if (playbackState.isPlaying) {
+        playerRef.current.pauseVideo();
+      } else {
+        playerRef.current.playVideo();
+      }
+    } catch (e) {
+      console.error('Error toggling play:', e);
     }
-  }, [playbackState.isPlaying]);
+  }, [playbackState.isPlaying, isReady]);
 
   const pause = useCallback(() => {
-    playerRef.current?.pauseVideo();
-  }, []);
+    if (!playerRef.current || !isReady) return;
+    try {
+      playerRef.current.pauseVideo();
+    } catch (e) {
+      console.error('Error pausing:', e);
+    }
+  }, [isReady]);
 
   const play = useCallback(() => {
-    playerRef.current?.playVideo();
-  }, []);
+    if (!playerRef.current || !isReady) return;
+    try {
+      playerRef.current.playVideo();
+    } catch (e) {
+      console.error('Error playing:', e);
+    }
+  }, [isReady]);
 
   const seek = useCallback((positionMs: number) => {
-    if (!playerRef.current) return;
-    playerRef.current.seekTo(positionMs / 1000, true);
-    setPlaybackState((prev) => ({ ...prev, position: positionMs }));
-  }, []);
+    if (!playerRef.current || !isReady) return;
+    try {
+      playerRef.current.seekTo(positionMs / 1000, true);
+      setPlaybackState((prev) => ({ ...prev, position: positionMs }));
+    } catch (e) {
+      console.error('Error seeking:', e);
+    }
+  }, [isReady]);
 
   const setVolume = useCallback((volume: number) => {
-    if (!playerRef.current) return;
-    playerRef.current.setVolume(volume * 100);
-    setPlaybackState((prev) => ({ ...prev, volume }));
-  }, []);
+    if (!playerRef.current || !isReady) return;
+    try {
+      playerRef.current.setVolume(volume * 100);
+      setPlaybackState((prev) => ({ ...prev, volume }));
+    } catch (e) {
+      console.error('Error setting volume:', e);
+    }
+  }, [isReady]);
 
   return {
     isReady,
