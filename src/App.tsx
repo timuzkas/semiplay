@@ -56,168 +56,98 @@ function AppContent() {
   
   useEffect(() => {
     const saved = localStorage.getItem("music-visualizer-theme");
-    if (!saved) {
-      setTheme("album-accent");
-    }
+    if (!saved) setTheme("album-accent");
   }, [setTheme]);
 
   const spotifyAuth = useSpotifyAuth();
   const [youtubeConnected, setYoutubeConnected] = useState(false);
-
-  const [activeService, setActiveService] = useState<"spotify" | "youtube">(
-    "youtube",
-  );
-
+  const [activeService, setActiveService] = useState<"spotify" | "youtube">("youtube");
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState<"off" | "track" | "all">("off");
-
   const [showSettings, setShowSettings] = useState(false);
   const [showThemeSettings, setShowThemeSettings] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [tvMode, setTvMode] = useState(false);
-  const [visualizerType, setVisualizerType] = useState<
-    "bars" | "wave" | "circle"
-  >("bars");
+  const [visualizerType, setVisualizerType] = useState<"bars" | "wave" | "circle">("bars");
   const [showVisualizer, setShowVisualizer] = useState(false);
   const [showLyrics, setShowLyrics] = useState(true);
-  const [lyricsSource, setLyricsSource] = useState<
-    "lrclib" | "netease" | "ovh"
-  >("lrclib");
-
+  const [lyricsSource, setLyricsSource] = useState<"lrclib" | "netease" | "ovh">("lrclib");
   const [queue, setQueue] = useState<Track[]>([]);
-
   const [roomSync, setRoomSync] = useState(false);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
-  
-  const isApplyingSyncRef = useRef(false);
-  const lastSyncTimeRef = useRef<number>(0);
-  const lastAppliedRemoteTimestampRef = useRef<number>(0);
-  const lastLocalActionTimeRef = useRef<number>(0);
-  const lastRemoteSyncTimeRef = useRef<number>(0);
-  const isFirstSyncRef = useRef(true);
 
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).has("share")) {
-      setYoutubeConnected(true);
-    }
-  }, []);
-
-  const spotifyPlayer = useSpotifyPlayer({
-    accessToken: spotifyAuth.accessToken,
-  });
-
+  const spotifyPlayer = useSpotifyPlayer({ accessToken: spotifyAuth.accessToken });
   const youtubePlayer = useYouTubePlayer();
 
-  const currentTrack: Track | null =
-    activeService === "spotify"
-      ? spotifyPlayer.currentTrack
-        ? {
-            id: spotifyPlayer.currentTrack.id || "",
-            name: spotifyPlayer.currentTrack.name,
-            artist: spotifyPlayer.currentTrack.artists
-              .map((a) => a.name)
-              .join(", "),
-            album: spotifyPlayer.currentTrack.album.name,
-            duration: spotifyPlayer.duration,
-            artwork: spotifyPlayer.currentTrack.album.images[0]?.url,
-            source: "spotify",
-          }
-        : null
-      : youtubePlayer.currentTrack;
+  const currentTrack: Track | null = activeService === "spotify"
+    ? (spotifyPlayer.currentTrack ? {
+        id: spotifyPlayer.currentTrack.id || "",
+        name: spotifyPlayer.currentTrack.name,
+        artist: spotifyPlayer.currentTrack.artists.map((a) => a.name).join(", "),
+        album: spotifyPlayer.currentTrack.album.name,
+        duration: spotifyPlayer.duration,
+        artwork: spotifyPlayer.currentTrack.album.images[0]?.url,
+        source: "spotify",
+      } : null)
+    : youtubePlayer.currentTrack;
 
-  const isPlaying =
-    activeService === "spotify"
-      ? !spotifyPlayer.isPaused && spotifyPlayer.isActive
-      : youtubePlayer.playbackState.isPlaying;
+  const isPlaying = activeService === "spotify" 
+    ? !spotifyPlayer.isPaused && spotifyPlayer.isActive 
+    : youtubePlayer.playbackState.isPlaying;
 
-  const position =
-    activeService === "spotify"
-      ? spotifyPlayer.position
-      : youtubePlayer.playbackState.position;
+  const position = activeService === "spotify" ? spotifyPlayer.position : youtubePlayer.playbackState.position;
+  const duration = activeService === "spotify" ? spotifyPlayer.duration : youtubePlayer.playbackState.duration;
+  const volume = activeService === "spotify" ? spotifyPlayer.volume : youtubePlayer.playbackState.volume;
 
-  const duration =
-    activeService === "spotify"
-      ? spotifyPlayer.duration
-      : youtubePlayer.playbackState.duration;
+  const stateRef = useRef({ currentTrack, position, isPlaying, queue, activeService, roomSync, roomId });
+  useEffect(() => {
+    stateRef.current = { currentTrack, position, isPlaying, queue, activeService, roomSync, roomId };
+  }, [currentTrack, position, isPlaying, queue, activeService, roomSync, roomId]);
 
-  const volume =
-    activeService === "spotify"
-      ? spotifyPlayer.volume
-      : youtubePlayer.playbackState.volume;
+  const lastLocalActionTimeRef = useRef<number>(0);
+  const lastAppliedRemoteTimestampRef = useRef<number>(0);
+  const isApplyingSyncRef = useRef(false);
 
   const handlePlayPause = useCallback(() => {
-    if (activeService === "spotify") {
-      spotifyPlayer.togglePlay();
-    } else {
-      youtubePlayer.togglePlay();
-    }
+    if (activeService === "spotify") spotifyPlayer.togglePlay();
+    else youtubePlayer.togglePlay();
   }, [activeService, spotifyPlayer, youtubePlayer]);
 
-  const handleSeek = useCallback(
-    (newPosition: number) => {
-      if (activeService === "spotify") {
-        spotifyPlayer.seek(newPosition);
-      } else {
-        youtubePlayer.seek(newPosition);
-      }
-    },
-    [activeService, spotifyPlayer, youtubePlayer],
-  );
+  const handleSeek = useCallback((newPosition: number) => {
+    if (activeService === "spotify") spotifyPlayer.seek(newPosition);
+    else youtubePlayer.seek(newPosition);
+  }, [activeService, spotifyPlayer, youtubePlayer]);
 
-  const broadcastState = useCallback(
-    (overrides: any = {}) => {
-      if (!socket || !roomSync || !roomId) return;
+  const broadcastState = useCallback((overrides: any = {}) => {
+    const { roomId: rid, roomSync: rs, currentTrack: ct, position: p, isPlaying: ip, queue: q } = stateRef.current;
+    if (!socket || !rid || !rs || isApplyingSyncRef.current) return;
 
-      const now = Date.now();
-      const isManualAction = Object.keys(overrides).length > 0;
+    const isManual = Object.keys(overrides).length > 0;
+    if (isManual) lastLocalActionTimeRef.current = Date.now();
 
-      if (isApplyingSyncRef.current && !isManualAction) return;
-      if (!isManualAction && (now - lastRemoteSyncTimeRef.current < 2000)) return;
-
-      if (isManualAction) {
-        lastLocalActionTimeRef.current = now;
-        isApplyingSyncRef.current = false;
-      }
-
-      const state = {
-        track: currentTrack,
-        position,
-        isPlaying,
-        queue,
-        timestamp: now,
-        sender: socket.id,
-        ...overrides,
-      };
-
-      socket.emit("update-state", { roomId, state });
-    },
-    [socket, roomSync, roomId, currentTrack, position, isPlaying, queue],
-  );
+    socket.emit("update-state", {
+      roomId: rid,
+      state: { track: ct, position: p, isPlaying: ip, queue: q, timestamp: Date.now(), sender: socket.id, ...overrides }
+    });
+  }, [socket]);
 
   const syncPlayPause = useCallback(() => {
     const newIsPlaying = !isPlaying;
     handlePlayPause();
-    if (roomSync) {
-      broadcastState({ isPlaying: newIsPlaying });
-    }
-  }, [handlePlayPause, roomSync, isPlaying, broadcastState]);
+    broadcastState({ isPlaying: newIsPlaying });
+  }, [handlePlayPause, isPlaying, broadcastState]);
 
-  const syncSeek = useCallback(
-    (pos: number) => {
-      handleSeek(pos);
-      if (roomSync) {
-        broadcastState({ position: pos });
-      }
-    },
-    [handleSeek, roomSync, broadcastState]);
+  const syncSeek = useCallback((pos: number) => {
+    handleSeek(pos);
+    broadcastState({ position: pos });
+  }, [handleSeek, broadcastState]);
 
   const toggleRoomSync = useCallback(() => {
     if (!roomSync) {
       const newId = Math.random().toString(36).substring(2, 7).toUpperCase();
       setRoomId(newId);
       setRoomSync(true);
-      isFirstSyncRef.current = true;
       socket?.emit("join-room", newId);
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.set("share", newId);
@@ -239,26 +169,6 @@ function AppContent() {
   }, [roomId]);
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement || 
-        e.target instanceof HTMLTextAreaElement ||
-        (e.target as HTMLElement).isContentEditable
-      ) {
-        return;
-      }
-
-      if (e.code === 'Space') {
-        e.preventDefault();
-        syncPlayPause();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [syncPlayPause]);
-
-  useEffect(() => {
     const api_url = import.meta.env.VITE_API_URL || "http://localhost:3001";
     const s = io(api_url);
     setSocket(s);
@@ -268,13 +178,10 @@ function AppContent() {
     if (shareId) {
       setRoomId(shareId);
       setRoomSync(true);
-      isFirstSyncRef.current = true;
       s.emit("join-room", shareId);
     }
 
-    return () => {
-      s.disconnect();
-    };
+    return () => { s.disconnect(); };
   }, []);
 
   useEffect(() => {
@@ -285,81 +192,48 @@ function AppContent() {
       if (state.timestamp <= lastAppliedRemoteTimestampRef.current) return;
       
       const now = Date.now();
-      const isRecentLocalAction = now - lastLocalActionTimeRef.current < 5000;
-      if (now - lastSyncTimeRef.current < 500) return;
+      if (now - lastLocalActionTimeRef.current < 3000) return;
 
       isApplyingSyncRef.current = true;
       lastAppliedRemoteTimestampRef.current = state.timestamp;
-      lastRemoteSyncTimeRef.current = now;
 
-      let trackChanged = false;
-
-      if (state.track && state.track.id !== currentTrack?.id) {
+      if (state.track && state.track.id !== stateRef.current.currentTrack?.id) {
         if (state.track.source === "youtube") {
           setActiveService("youtube");
           youtubePlayer.playTrack(state.track);
-          trackChanged = true;
-          isFirstSyncRef.current = true;
         }
       }
 
-      if (state.queue && JSON.stringify(state.queue) !== JSON.stringify(queue)) {
+      if (state.queue && JSON.stringify(state.queue) !== JSON.stringify(stateRef.current.queue)) {
         setQueue(state.queue);
       }
 
-      const shouldForcePlaybackSync = isFirstSyncRef.current;
-
-      if ((!trackChanged || shouldForcePlaybackSync) && !isRecentLocalAction) {
-        if (typeof state.position === "number" && Math.abs(state.position - position) > 8000) {
-          handleSeek(state.position);
-        }
-
-        if (typeof state.isPlaying === "boolean" && state.isPlaying !== isPlaying) {
-          if (state.isPlaying) {
-            if (activeService === "youtube") youtubePlayer.play();
-            else spotifyPlayer.togglePlay();
-          } else {
-            if (activeService === "youtube") youtubePlayer.pause();
-            else spotifyPlayer.togglePlay();
-          }
+      if (typeof state.position === "number" && Math.abs(state.position - stateRef.current.position) > 8000) {
+        handleSeek(state.position);
+      }
+      if (typeof state.isPlaying === "boolean" && state.isPlaying !== stateRef.current.isPlaying) {
+        if (state.isPlaying) {
+          if (stateRef.current.activeService === "youtube") youtubePlayer.play();
+          else spotifyPlayer.togglePlay();
+        } else {
+          if (stateRef.current.activeService === "youtube") youtubePlayer.pause();
+          else spotifyPlayer.togglePlay();
         }
       }
 
-      isFirstSyncRef.current = false;
-      lastSyncTimeRef.current = now;
-      setTimeout(() => {
-        isApplyingSyncRef.current = false;
-      }, 800);
+      setTimeout(() => { isApplyingSyncRef.current = false; }, 1000);
     };
-
-    const handleRequestState = () => broadcastState();
 
     socket.on("sync-state", handleSync);
-    socket.on("request-state", handleRequestState);
-
+    socket.on("request-state", () => broadcastState());
     return () => {
       socket.off("sync-state", handleSync);
-      socket.off("request-state", handleRequestState);
+      socket.off("request-state");
     };
-  }, [
-    socket,
-    roomSync,
-    roomId,
-    currentTrack?.id,
-    position,
-    isPlaying,
-    queue,
-    handleSeek,
-    youtubePlayer,
-    spotifyPlayer,
-    activeService,
-    broadcastState,
-  ]);
+  }, [socket, roomSync, roomId, youtubePlayer, spotifyPlayer, handleSeek, broadcastState]);
 
   useEffect(() => {
-    if (roomSync && roomId && socket) {
-      broadcastState();
-    }
+    if (roomSync && roomId && socket) broadcastState();
   }, [roomSync, roomId, !!socket, broadcastState]);
 
   useEffect(() => {
@@ -369,10 +243,16 @@ function AppContent() {
   }, [roomSync, isPlaying, broadcastState]);
 
   useEffect(() => {
-    if (roomSync && !isApplyingSyncRef.current) {
-      broadcastState();
-    }
-  }, [queue.length, roomSync, broadcastState]);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || (e.target as HTMLElement).isContentEditable) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        syncPlayPause();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [syncPlayPause]);
 
   const lyrics = useUnifiedLyrics({
     trackName: currentTrack?.name || null,
@@ -386,16 +266,12 @@ function AppContent() {
 
   useEffect(() => {
     if (theme === "album-accent" && currentTrack?.artwork) {
-      extractColor(currentTrack.artwork).then((color) => {
-        setAccentColor(color);
-      });
+      extractColor(currentTrack.artwork).then((color) => setAccentColor(color));
     }
   }, [currentTrack?.artwork, theme, extractColor, setAccentColor]);
 
   useEffect(() => {
-    if (window.location.hash.includes("access_token")) {
-      spotifyAuth.handleCallback();
-    }
+    if (window.location.hash.includes("access_token")) spotifyAuth.handleCallback();
   }, [spotifyAuth]);
 
   const toggleTVMode = useCallback(async () => {
@@ -407,89 +283,49 @@ function AppContent() {
         if (document.exitFullscreen) await document.exitFullscreen();
         setTvMode(false);
       }
-    } catch {
-      setTvMode((prev) => !prev);
-    }
+    } catch { setTvMode((prev) => !prev); }
   }, []);
 
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      if (!document.fullscreenElement && tvMode) {
-        setTvMode(false);
-      }
-    };
+    const handleFullscreenChange = () => { if (!document.fullscreenElement && tvMode) setTvMode(false); };
     document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () =>
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, [tvMode]);
 
-  const addToQueue = useCallback(
-    (track: Track) => {
-      const newQueue = [...queue, track];
-      setQueue(newQueue);
-      if (roomSync) {
-        broadcastState({ queue: newQueue });
-      }
-    },
-    [queue, roomSync, broadcastState],
-  );
-
-  const removeFromQueue = useCallback(
-    (index: number) => {
-      const newQueue = queue.filter((_, i) => i !== index);
-      setQueue(newQueue);
-      if (roomSync) {
-        broadcastState({ queue: newQueue });
-      }
-    },
-    [queue, roomSync, broadcastState],
-  );
-
-  const clearQueue = useCallback(() => {
+  const addToQueue = (track: Track) => {
+    const nq = [...queue, track];
+    setQueue(nq);
+    broadcastState({ queue: nq });
+  };
+  const removeFromQueue = (index: number) => {
+    const nq = queue.filter((_, i) => i !== index);
+    setQueue(nq);
+    broadcastState({ queue: nq });
+  };
+  const clearQueue = () => {
     setQueue([]);
-    if (roomSync) {
-      broadcastState({ queue: [] });
+    broadcastState({ queue: [] });
+  };
+  const playFromQueue = (track: Track, index: number) => {
+    if (track.source === "youtube") {
+      setActiveService("youtube");
+      youtubePlayer.playTrack(track);
     }
-  }, [roomSync, broadcastState]);
+    const nq = queue.filter((_, i) => i !== index);
+    setQueue(nq);
+    broadcastState({ track, isPlaying: true, position: 0, queue: nq });
+  };
 
-  const playFromQueue = useCallback(
-    (track: Track, index: number) => {
-      if (track.source === "youtube") {
-        setActiveService("youtube");
-        youtubePlayer.playTrack(track);
-      }
-      setQueue((prev) => prev.filter((_, i) => i !== index));
-      if (roomSync) {
-        broadcastState({ track, isPlaying: true, position: 0 });
-      }
-    },
-    [youtubePlayer, roomSync, broadcastState],
-  );
+  const handlePrevious = () => { if (activeService === "spotify") spotifyPlayer.previousTrack(); };
+  const handleNext = () => {
+    if (activeService === "spotify") spotifyPlayer.nextTrack();
+    else if (queue.length > 0) playFromQueue(queue[0], 0);
+  };
 
-  const handlePrevious = useCallback(() => {
-    if (activeService === "spotify") {
-      spotifyPlayer.previousTrack();
-    }
-  }, [activeService, spotifyPlayer]);
-
-  const handleNext = useCallback(() => {
-    if (activeService === "spotify") {
-      spotifyPlayer.nextTrack();
-    } else if (queue.length > 0) {
-      playFromQueue(queue[0], 0);
-    }
-  }, [activeService, spotifyPlayer, queue, playFromQueue]);
-
-  const handleVolumeChange = useCallback(
-    (newVolume: number) => {
-      if (activeService === "spotify") {
-        spotifyPlayer.setVolume(newVolume);
-      } else {
-        youtubePlayer.setVolume(newVolume);
-      }
-    },
-    [activeService, spotifyPlayer, youtubePlayer],
-  );
+  const handleVolumeChange = (v: number) => {
+    if (activeService === "spotify") spotifyPlayer.setVolume(v);
+    else youtubePlayer.setVolume(v);
+  };
 
   useEffect(() => {
     if (duration > 0 && position >= duration - 1000) {
@@ -502,39 +338,10 @@ function AppContent() {
         handleNext();
       }
     }
-  }, [
-    position,
-    duration,
-    queue,
-    repeat,
-    playFromQueue,
-    handleSeek,
-    isPlaying,
-    handlePlayPause,
-    handleNext,
-  ]);
-
-  const services = [
-    {
-      id: "spotify" as const,
-      name: "Spotify",
-      icon: <SpotifyIcon className="w-4 h-4" />,
-      connected: spotifyAuth.isAuthenticated,
-    },
-    {
-      id: "youtube" as const,
-      name: "YouTube",
-      icon: <Youtube className="w-4 h-4" />,
-      connected: youtubeConnected,
-    },
-  ];
+  }, [position, duration, queue, repeat, isPlaying, handlePlayPause, handleNext, handleSeek]);
 
   const hasYtToken = !!localStorage.getItem("yt_access_token");
-  const showOnboarding =
-    !spotifyAuth.isAuthenticated &&
-    !youtubeConnected &&
-    !new URLSearchParams(window.location.search).get("share") &&
-    !hasYtToken;
+  const showOnboarding = !spotifyAuth.isAuthenticated && !youtubeConnected && !new URLSearchParams(window.location.search).get("share") && !hasYtToken;
 
   useEffect(() => {
     if (hasYtToken && !youtubeConnected) {
@@ -543,17 +350,10 @@ function AppContent() {
     }
   }, [hasYtToken, youtubeConnected]);
 
-  const handleShuffleToggle = useCallback(() => {
-    setShuffle((prev) => !prev);
-  }, []);
-
-  const handleRepeatToggle = useCallback(() => {
-    setRepeat((prev) => {
-      if (prev === "off") return "all";
-      if (prev === "all") return "track";
-      return "off";
-    });
-  }, []);
+  const handleShuffleToggle = () => setShuffle(!shuffle);
+  const handleRepeatToggle = () => {
+    setRepeat(prev => prev === "off" ? "all" : prev === "all" ? "track" : "off");
+  };
 
   if (showOnboarding) {
     return (
@@ -565,171 +365,64 @@ function AppContent() {
             </div>
           </div>
           <div className="space-y-2">
-            <h1 className="text-4xl font-instrument tracking-tight">
-              semiplay
-            </h1>
-            <p className="text-muted-foreground text-sm">
-              Connect your music service to enjoy lyrics and visualizations
-            </p>
+            <h1 className="text-4xl font-instrument tracking-tight text-white">semiplay</h1>
+            <p className="text-muted-foreground text-sm">Connect your music service to enjoy lyrics and visualizations</p>
           </div>
           <div className="space-y-3">
-            <button
-              disabled
-              className={cn(
-                "w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl",
-                "bg-zinc-800 text-muted-foreground font-medium cursor-not-allowed opacity-50",
-              )}
-            >
-              <SpotifyIcon className="w-5 h-5" />
-              Spotify coming soon
+            <button disabled className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl bg-zinc-800 text-muted-foreground font-medium cursor-not-allowed opacity-50">
+              <SpotifyIcon className="w-5 h-5" /> Spotify coming soon
             </button>
-            <button
-              onClick={() => {
-                setYoutubeConnected(true);
-                setActiveService("youtube");
-              }}
-              className={cn(
-                "w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl",
-                "bg-secondary text-foreground font-medium",
-                "hover:bg-secondary/80 active:scale-[0.98] transition-all duration-200",
-              )}
-            >
-              <Youtube className="w-5 h-5" />
-              Use YouTube Music
+            <button onClick={() => { setYoutubeConnected(true); setActiveService("youtube"); }} className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl bg-secondary text-foreground font-medium hover:bg-secondary/80 active:scale-[0.98] transition-all duration-200">
+              <Youtube className="w-5 h-5" /> Use YouTube Music
             </button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Connect your account in settings to access your playlists
-          </p>
+          <p className="text-xs text-muted-foreground">Connect your account in settings to access your playlists</p>
         </div>
       </div>
     );
   }
 
+  const services = [
+    { id: "spotify" as const, name: "Spotify", icon: <SpotifyIcon className="w-4 h-4" />, connected: spotifyAuth.isAuthenticated },
+    { id: "youtube" as const, name: "YouTube", icon: <Youtube className="w-4 h-4" />, connected: youtubeConnected },
+  ];
+
   return (
     <>
-      <div
-        className={cn(
-          "h-screen bg-background flex flex-col transition-colors duration-500 overflow-hidden",
-        )}
-      >
+      <div className={cn("h-screen bg-background flex flex-col transition-colors duration-500 overflow-hidden")}>
         <header className="flex items-center justify-between px-6 py-4 border-b shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Music2 className="w-4 h-4 text-primary" />
-            </div>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="text-xl font-instrument cursor-help header-title">
-                    semiplay
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p className="text-xs">v2.1.0-revamp</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center"><Music2 className="w-4 h-4 text-primary" /></div>
+            <TooltipProvider><Tooltip><TooltipTrigger asChild><span className="text-xl font-instrument cursor-help header-title">semiplay</span></TooltipTrigger><TooltipContent><p className="text-xs">v2.1.0-revamp</p></TooltipContent></Tooltip></TooltipProvider>
           </div>
-          <ServiceSelector
-            services={services}
-            activeService={activeService}
-            onSelect={setActiveService}
-          />
+          <ServiceSelector services={services} activeService={activeService} onSelect={setActiveService} />
           <div className="flex items-center gap-1">
             {activeService === "youtube" && (
-              <YouTubeSearch
-                onAddToQueue={addToQueue}
-                onPlayNow={(track: Track) => {
-                  youtubePlayer.playTrack(track);
-                  if (roomSync) {
-                    broadcastState({ track, isPlaying: true, position: 0 });
-                  }
-                }}
-              />
+              <YouTubeSearch onAddToQueue={addToQueue} onPlayNow={(track: Track) => { youtubePlayer.playTrack(track); broadcastState({ track, isPlaying: true, position: 0 }); }} />
             )}
-            <button
-              onClick={() => setShowThemeSettings(true)}
-              className="p-2.5 rounded-full hover:bg-secondary transition-colors"
-              title="Theme"
-            >
-              <Palette className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => setShowSettings(true)}
-              className="p-2.5 rounded-full hover:bg-secondary transition-colors"
-              title="Settings"
-            >
-              <Settings className="w-5 h-5" />
-            </button>
-            <button
-              onClick={toggleTVMode}
-              className={cn(
-                "p-2.5 rounded-full transition-colors",
-                tvMode
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-secondary",
-              )}
-              title="TV Mode (Fullscreen)"
-            >
-              <Monitor className="w-5 h-5" />
-            </button>
+            <button onClick={() => setShowThemeSettings(true)} className="p-2.5 rounded-full hover:bg-secondary transition-colors" title="Theme"><Palette className="w-5 h-5" /></button>
+            <button onClick={() => setShowSettings(true)} className="p-2.5 rounded-full hover:bg-secondary transition-colors" title="Settings"><Settings className="w-5 h-5" /></button>
+            <button onClick={toggleTVMode} className={cn("p-2.5 rounded-full transition-colors", tvMode ? "bg-primary text-primary-foreground" : "hover:bg-secondary")} title="TV Mode (Fullscreen)"><Monitor className="w-5 h-5" /></button>
           </div>
         </header>
 
         <main className="flex-1 flex overflow-hidden relative">
           <div className="flex-1 flex flex-col p-4 md:p-6 min-w-0 overflow-y-auto scrollbar-hide">
             <div className="flex flex-col items-center justify-center flex-1 gap-6 md:gap-8 py-4 md:py-8">
-              <AlbumArtwork
-                src={currentTrack?.artwork}
-                alt={currentTrack?.name}
-                size="large"
-                isPlaying={isPlaying}
-              />
-              <TrackInfo
-                name={currentTrack?.name || "Not Playing"}
-                artist={currentTrack?.artist || "Select a track"}
-                album={currentTrack?.album}
-                size="medium"
-                className="text-center"
-              />
+              <AlbumArtwork src={currentTrack?.artwork} alt={currentTrack?.name} size="large" isPlaying={isPlaying} />
+              <TrackInfo name={currentTrack?.name || "Not Playing"} artist={currentTrack?.artist || "Select a track"} album={currentTrack?.album} size="medium" className="text-center" />
               {showVisualizer && (
-                <div className="w-full h-24 md:h-32">
-                  <Visualizer
-                    isPlaying={isPlaying}
-                    type={visualizerType}
-                    color={accentColor}
-                  />
-                </div>
+                <div className="w-full h-24 md:h-32"><Visualizer isPlaying={isPlaying} type={visualizerType} color={accentColor} /></div>
               )}
             </div>
             <div className="space-y-4 mt-auto max-w-4xl mx-auto w-full pb-4 md:pb-0">
-              <ProgressBar
-                position={position}
-                duration={duration}
-                onSeek={syncSeek}
-              />
+              <ProgressBar position={position} duration={duration} onSeek={syncSeek} />
               <div className="flex flex-col md:flex-row items-center justify-between gap-4 md:gap-0">
                 <div className="w-full md:w-auto flex justify-center order-1 md:order-none">
-                  <PlaybackButtons
-                    isPlaying={isPlaying}
-                    shuffle={shuffle}
-                    repeat={repeat}
-                    onPlayPause={syncPlayPause}
-                    onPrevious={handlePrevious}
-                    onNext={handleNext}
-                    onShuffleToggle={handleShuffleToggle}
-                    onRepeatToggle={handleRepeatToggle}
-                    className="scale-90 md:scale-100"
-                  />
+                  <PlaybackButtons isPlaying={isPlaying} shuffle={shuffle} repeat={repeat} onPlayPause={syncPlayPause} onPrevious={handlePrevious} onNext={handleNext} onShuffleToggle={handleShuffleToggle} onRepeatToggle={handleRepeatToggle} className="scale-90 md:scale-100" />
                 </div>
-
                 <div className="md:block order-2 md:order-none">
-                  <VolumeControl
-                    volume={volume}
-                    onVolumeChange={handleVolumeChange}
-                    className="flex md:flex"
-                  />
+                  <VolumeControl volume={volume} onVolumeChange={handleVolumeChange} className="flex md:flex" />
                 </div>
               </div>
             </div>
@@ -738,278 +431,93 @@ function AppContent() {
             </footer>
           </div>
           {showLyrics && (
-            <LyricsQueuePanel
-              lyrics={lyrics.lyrics}
-              currentLineIndex={lyrics.currentLineIndex}
-              isLoading={lyrics.isLoading}
-              queue={queue}
-              currentTrack={currentTrack}
-              isPlaying={isPlaying}
-              onTrackSelect={playFromQueue}
-              onRemoveFromQueue={removeFromQueue}
-              onClearQueue={clearQueue}
-              className="hidden lg:flex w-80 xl:w-96 shrink-0"
-              showLyrics={showLyrics}
-            />
+            <LyricsQueuePanel lyrics={lyrics.lyrics} currentLineIndex={lyrics.currentLineIndex} isLoading={lyrics.isLoading} queue={queue} currentTrack={currentTrack} isPlaying={isPlaying} onTrackSelect={playFromQueue} onRemoveFromQueue={removeFromQueue} onClearQueue={clearQueue} className="hidden lg:flex w-80 xl:w-96 shrink-0" showLyrics={showLyrics} />
           )}
         </main>
+
         {showSettings && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in"
-            onClick={() => setShowSettings(false)}
-          >
-            <div
-              className="bg-background rounded-2xl p-6 w-full max-sm:mx-4 max-w-sm shadow-2xl animate-in modal-in"
-              onClick={(e) => e.stopPropagation()}
-            >
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => setShowSettings(false)}>
+            <div className="bg-background rounded-2xl p-6 w-full max-sm:mx-4 max-w-sm shadow-2xl animate-in modal-in" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold">Settings</h2>
-                <button
-                  onClick={() => setShowSettings(false)}
-                  className="p-2 hover:bg-secondary rounded-lg transition-colors"
-                >
-                  <Minimize2 className="w-4 h-4" />
-                </button>
+                <h2 className="text-lg font-semibold text-white">Settings</h2>
+                <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-secondary rounded-lg transition-colors"><Minimize2 className="w-4 h-4" /></button>
               </div>
               <div className="space-y-5">
                 <div className="space-y-2.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-                    Room Sync
-                    {roomSync && (
-                      <span className="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded font-mono">
-                        {roomId}
-                      </span>
-                    )}
-                  </label>
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">Room Sync {roomSync && <span className="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded font-mono">{roomId}</span>}</label>
                   <div className="flex gap-2">
-                    <button
-                      onClick={toggleRoomSync}
-                      className={cn(
-                        "flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                        roomSync
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-secondary hover:bg-secondary/80",
-                      )}
-                    >
-                      {roomSync ? "Disable Sync" : "Enable Sync"}
-                    </button>
-                    {roomSync && (
-                      <button
-                        onClick={copyShareLink}
-                        className="px-3 py-2 rounded-lg bg-secondary text-sm font-medium hover:bg-secondary/80"
-                      >
-                        Copy Link
-                      </button>
-                    )}
+                    <button onClick={toggleRoomSync} className={cn("flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors", roomSync ? "bg-primary text-primary-foreground" : "bg-secondary hover:bg-secondary/80")}>{roomSync ? "Disable Sync" : "Enable Sync"}</button>
+                    {roomSync && <button onClick={copyShareLink} className="px-3 py-2 rounded-lg bg-secondary text-sm font-medium hover:bg-secondary/80">Copy Link</button>}
                   </div>
                 </div>
-
                 <div className="space-y-2.5 pt-4 border-t">
                   <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Account</label>
                   <div className="grid grid-cols-1 gap-2">
                     {localStorage.getItem("yt_access_token") ? (
-                      <button
-                        onClick={() => {
-                          localStorage.removeItem("yt_access_token");
-                          window.location.reload();
-                        }}
-                        className="w-full px-3 py-2 rounded-lg text-sm font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors flex items-center justify-center gap-2"
-                      >
-                        <Youtube className="w-3.5 h-3.5" />
-                        Disconnect YouTube
+                      <button onClick={() => { localStorage.removeItem("yt_access_token"); window.location.reload(); }} className="w-full px-3 py-2 rounded-lg text-sm font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors flex items-center justify-center gap-2">
+                        <Youtube className="w-3.5 h-3.5" /> Disconnect YouTube
                       </button>
                     ) : (
-                      <button
-                        onClick={() => {
-                          const api_url =
-                            import.meta.env.VITE_API_URL ||
-                            "http://localhost:3001";
-                          window.location.href = `${api_url}/api/auth/google`;
-                        }}
-                        className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
-                      >
-                        <Youtube className="w-3.5 h-3.5" />
-                        Connect YouTube
-                      </button>
-                    )}
-
-                    {spotifyAuth.isAuthenticated && (
-                      <button
-                        onClick={spotifyAuth.logout}
-                        className="w-full px-3 py-2 rounded-lg text-sm font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
-                      >
-                        Disconnect Spotify
+                      <button onClick={() => { const api_url = import.meta.env.VITE_API_URL || "http://localhost:3001"; window.location.href = `${api_url}/api/auth/google`; }} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors">
+                        <Youtube className="w-3.5 h-3.5" /> Connect YouTube
                       </button>
                     )}
                   </div>
                 </div>
-
                 <div className="space-y-4 pt-4 border-t">
                   <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-                      Visualizer
-                      <button 
-                        onClick={() => setShowVisualizer(!showVisualizer)}
-                        className={cn(
-                          "text-[10px] px-2 py-0.5 rounded-full transition-colors",
-                          showVisualizer ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
-                        )}
-                      >
-                        {showVisualizer ? "ON" : "OFF"}
-                      </button>
-                    </label>
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">Visualizer <button onClick={() => setShowVisualizer(!showVisualizer)} className={cn("text-[10px] px-2 py-0.5 rounded-full transition-colors", showVisualizer ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground")}>{showVisualizer ? "ON" : "OFF"}</button></label>
                     {showVisualizer && (
                       <div className="grid grid-cols-3 gap-1.5">
                         {(["bars", "wave", "circle"] as const).map((type) => (
-                          <button
-                            key={type}
-                            onClick={() => setVisualizerType(type)}
-                            className={cn(
-                              "px-2 py-1.5 rounded-md text-xs capitalize transition-colors",
-                              visualizerType === type
-                                ? "bg-primary/20 text-primary ring-1 ring-inset ring-primary/50"
-                                : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground",
-                            )}
-                          >
-                            {type}
-                          </button>
+                          <button key={type} onClick={() => setVisualizerType(type)} className={cn("px-2 py-1.5 rounded-md text-xs capitalize transition-colors", visualizerType === type ? "bg-primary/20 text-primary ring-1 ring-inset ring-primary/50" : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground")}>{type}</button>
                         ))}
                       </div>
                     )}
                   </div>
-
                   <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-                      Lyrics
-                      <button 
-                        onClick={() => setShowLyrics(!showLyrics)}
-                        className={cn(
-                          "text-[10px] px-2 py-0.5 rounded-full transition-colors",
-                          showLyrics ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
-                        )}
-                      >
-                        {showLyrics ? "ON" : "OFF"}
-                      </button>
-                    </label>
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">Lyrics <button onClick={() => setShowLyrics(!showLyrics)} className={cn("text-[10px] px-2 py-0.5 rounded-full transition-colors", showLyrics ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground")}>{showLyrics ? "ON" : "OFF"}</button></label>
                     <div className="grid grid-cols-3 gap-1.5">
                       {(["lrclib", "netease", "ovh"] as const).map((source) => (
-                        <button
-                          key={source}
-                          onClick={() => setLyricsSource(source)}
-                          className={cn(
-                            "px-2 py-1.5 rounded-md text-[10px] uppercase font-bold transition-colors",
-                            lyricsSource === source
-                              ? "bg-primary/20 text-primary ring-1 ring-inset ring-primary/50"
-                              : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground",
-                          )}
-                        >
-                          {source}
-                        </button>
+                        <button key={source} onClick={() => setLyricsSource(source)} className={cn("px-2 py-1.5 rounded-md text-[10px] uppercase font-bold transition-colors", lyricsSource === source ? "bg-primary/20 text-primary ring-1 ring-inset ring-primary/50" : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground")}>{source}</button>
                       ))}
                     </div>
                   </div>
                 </div>
-
                 <div className="pt-4 border-t flex items-center justify-between">
-                  <button
-                    onClick={() => {
-                      setShowSettings(false);
-                      setShowTerms(true);
-                    }}
-                    className="text-[10px] font-bold uppercase tracking-tight text-muted-foreground hover:text-primary transition-colors"
-                  >
-                    Privacy & Terms
-                  </button>
-                  <a
-                    href="https://github.com/timuzkas/semiplay"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-tight text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <Github className="w-3 h-3" />
-                    GitHub
-                  </a>
+                  <button onClick={() => { setShowSettings(false); setShowTerms(true); }} className="text-[10px] font-bold uppercase tracking-tight text-muted-foreground hover:text-primary transition-colors">Privacy & Terms</button>
+                  <a href="https://github.com/timuzkas/semiplay" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-tight text-muted-foreground hover:text-foreground transition-colors"><Github className="w-3 h-3" /> GitHub</a>
                 </div>
               </div>
             </div>
           </div>
         )}
+
         {showThemeSettings && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in"
-            onClick={() => setShowThemeSettings(false)}
-          >
-            <div
-              className="bg-background rounded-2xl p-6 w-full max-sm:mx-4 max-w-sm shadow-2xl animate-in modal-in"
-              onClick={(e) => e.stopPropagation()}
-            >
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => setShowThemeSettings(false)}>
+            <div className="bg-background rounded-2xl p-6 w-full max-sm:mx-4 max-w-sm shadow-2xl animate-in modal-in" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <Palette className="w-5 h-5" />
-                  Theme
-                </h2>
-                <button
-                  onClick={() => setShowThemeSettings(false)}
-                  className="p-2 hover:bg-secondary rounded-lg transition-colors"
-                >
-                  <Minimize2 className="w-4 h-4" />
-                </button>
+                <h2 className="text-lg font-semibold flex items-center gap-2 text-white"><Palette className="w-5 h-5" /> Theme</h2>
+                <button onClick={() => setShowThemeSettings(false)} className="p-2 hover:bg-secondary rounded-lg transition-colors"><Minimize2 className="w-4 h-4" /></button>
               </div>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => setTheme("dark")}
-                    className={cn(
-                      "p-4 rounded-xl border-2 transition-all",
-                      theme === "dark"
-                        ? "border-primary bg-primary/5"
-                        : "border-border hover:border-primary/50",
-                    )}
-                  >
+                  <button onClick={() => setTheme("dark")} className={cn("p-4 rounded-xl border-2 transition-all", theme === "dark" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50")}>
                     <div className="w-full h-12 rounded-lg bg-zinc-900 mb-3" />
-                    <span className="text-sm font-medium">Dark</span>
+                    <span className="text-sm font-medium text-white">Dark</span>
                   </button>
-                  <button
-                    onClick={() => setTheme("album-accent")}
-                    className={cn(
-                      "p-4 rounded-xl border-2 transition-all",
-                      theme === "album-accent"
-                        ? "border-primary bg-primary/5"
-                        : "border-border hover:border-primary/50",
-                    )}
-                  >
-                    <div
-                      className="w-full h-12 rounded-lg mb-3"
-                      style={{
-                        background: `linear-gradient(135deg, ${accentColor}40, ${accentColor}20)`,
-                      }}
-                    />
-                    <span className="text-sm font-medium">Album Accent</span>
+                  <button onClick={() => setTheme("album-accent")} className={cn("p-4 rounded-xl border-2 transition-all", theme === "album-accent" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50")}>
+                    <div className="w-full h-12 rounded-lg mb-3" style={{ background: `linear-gradient(135deg, ${accentColor}40, ${accentColor}20)` }} />
+                    <span className="text-sm font-medium text-white">Album Accent</span>
                   </button>
                 </div>
                 {theme === "album-accent" && (
                   <div className="space-y-2">
-                    <label className="text-sm text-muted-foreground">
-                      Accent Color
-                    </label>
+                    <label className="text-sm text-muted-foreground">Accent Color</label>
                     <div className="flex gap-2">
-                      <input
-                        type="color"
-                        value={accentColor}
-                        onChange={(e) => setAccentColor(e.target.value)}
-                        className="w-10 h-10 rounded-lg cursor-pointer"
-                      />
-                      <input
-                        type="text"
-                        value={accentColor}
-                        onChange={(e) => setAccentColor(e.target.value)}
-                        className="flex-1 px-3 py-2 rounded-lg bg-secondary text-sm"
-                      />
+                      <input type="color" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} className="w-10 h-10 rounded-lg cursor-pointer" />
+                      <input type="text" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} className="flex-1 px-3 py-2 rounded-lg bg-secondary text-sm text-white" />
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Color is automatically extracted from album artwork when
-                      available
-                    </p>
                   </div>
                 )}
               </div>
@@ -1017,22 +525,7 @@ function AppContent() {
           </div>
         )}
       </div>
-      <TVMode
-        isActive={tvMode}
-        currentTrack={currentTrack}
-        isPlaying={isPlaying}
-        position={position}
-        duration={duration}
-        volume={volume}
-        lyrics={lyrics.lyrics}
-        currentLineIndex={lyrics.currentLineIndex}
-        onPlayPause={syncPlayPause}
-        onPrevious={handlePrevious}
-        onNext={handleNext}
-        onExit={() => setTvMode(false)}
-        onVolumeChange={handleVolumeChange}
-        onSeek={syncSeek}
-      />
+      <TVMode isActive={tvMode} currentTrack={currentTrack} isPlaying={isPlaying} position={position} duration={duration} volume={volume} lyrics={lyrics.lyrics} currentLineIndex={lyrics.currentLineIndex} onPlayPause={syncPlayPause} onPrevious={handlePrevious} onNext={handleNext} onExit={() => setTvMode(false)} onVolumeChange={handleVolumeChange} onSeek={syncSeek} />
       {showTerms && <Terms onClose={() => setShowTerms(false)} />}
     </>
   );
