@@ -134,13 +134,12 @@ export function YouTubeSearch({ onAddToQueue, onPlayNow, className }: YouTubeSea
       {/* Search Modal */}
       {isOpen && (
         <div 
-          className="fixed inset-0 z-50 flex items-start justify-center pt-24 bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-start justify-center pt-24 bg-black/60 backdrop-blur-sm animate-in fade-in"
           onClick={handleClose}
         >
           <div 
             className={cn(
-              'w-full max-w-xl mx-4 bg-background rounded-2xl shadow-2xl overflow-hidden',
-              'animate-in zoom-in-95 duration-200',
+              'w-full max-w-xl mx-4 bg-background rounded-2xl shadow-2xl overflow-hidden animate-in modal-in',
               className
             )}
             onClick={e => e.stopPropagation()}

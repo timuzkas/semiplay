@@ -21,9 +21,9 @@ export function Terms({ onClose, fullPage = false }: TermsProps) {
       );
     }
     return (
-      <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md p-4" onClick={onClose}>
+      <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in" onClick={onClose}>
         <div 
-          className="bg-background border rounded-2xl p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto scrollbar-hide shadow-2xl"
+          className="bg-background border rounded-2xl p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto scrollbar-hide shadow-2xl animate-in modal-in"
           onClick={e => e.stopPropagation()}
         >
           {children}

@@ -805,11 +805,11 @@ function AppContent() {
         </main>
         {showSettings && (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in"
             onClick={() => setShowSettings(false)}
           >
             <div
-              className="bg-background rounded-2xl p-6 w-full max-w-sm shadow-2xl"
+              className="bg-background rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in modal-in"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-6">
@@ -990,11 +990,11 @@ function AppContent() {
         )}
         {showThemeSettings && (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in"
             onClick={() => setShowThemeSettings(false)}
           >
             <div
-              className="bg-background rounded-2xl p-6 w-full max-w-sm shadow-2xl"
+              className="bg-background rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in modal-in"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-6">
