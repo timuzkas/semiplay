@@ -207,7 +207,7 @@ export function YouTubePlaylists({ accessToken, onAddToQueue, onPlayNow }: YouTu
             {tracks.length > 0 && (
               <button
                 onClick={handleAddAll}
-                className="text-[10px] uppercase font-black px-2 py-1 rounded bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground transition-all"
+                className="text-[10px] uppercase font-black px-2 py-1 rounded bg-primary/10 text-primary hover:bg-primary hover:text-white transition-all"
               >
                 Add All
               </button>
