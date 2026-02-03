@@ -330,6 +330,13 @@ function AppContent() {
     setQueue(nq);
     broadcastState({ queue: nq });
   };
+
+  const addTracksToQueue = (tracks: Track[]) => {
+    const nq = [...queue, ...tracks];
+    setQueue(nq);
+    broadcastState({ queue: nq });
+  };
+
   const removeFromQueue = (index: number) => {
     const nq = queue.filter((_, i) => i !== index);
     setQueue(nq);
@@ -422,9 +429,16 @@ function AppContent() {
           </div>
           <ServiceSelector services={services} activeService={activeService} onSelect={setActiveService} />
           <div className="flex items-center gap-1">
-            {activeService === "youtube" && (
-              <YouTubeSearch onAddToQueue={addToQueue} onPlayNow={(track: Track) => { youtubePlayer.playTrack(track); broadcastState({ track, isPlaying: true, position: 0 }); }} />
-            )}
+                        {activeService === "youtube" && (
+                          <YouTubeSearch
+                            onAddToQueue={addToQueue}
+                            onAddTracksToQueue={addTracksToQueue}
+                            onPlayNow={(track: Track) => {
+                              youtubePlayer.playTrack(track);
+                              broadcastState({ track, isPlaying: true, position: 0 });
+                            }}
+                          />
+                        )}
             <button onClick={() => setShowThemeSettings(true)} className="p-2.5 rounded-full hover:bg-secondary transition-colors" title="Theme"><Palette className="w-5 h-5" /></button>
             <button onClick={() => setShowSettings(true)} className="p-2.5 rounded-full hover:bg-secondary transition-colors" title="Settings"><Settings className="w-5 h-5" /></button>
             <button onClick={toggleTVMode} className={cn("p-2.5 rounded-full transition-colors", tvMode ? "bg-primary text-primary-foreground" : "hover:bg-secondary")} title="TV Mode (Fullscreen)"><Monitor className="w-5 h-5" /></button>

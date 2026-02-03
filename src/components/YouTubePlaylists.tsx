@@ -18,13 +18,14 @@ interface Playlist {
 interface YouTubePlaylistsProps {
   accessToken: string;
   onAddToQueue: (track: Track) => void;
+  onAddTracksToQueue: (tracks: Track[]) => void;
   onPlayNow: (track: Track) => void;
 }
 
 // Global cache for the session
 const playlistCache = new Map<string, { tracks: Track[]; nextToken: string | null }>();
 
-export function YouTubePlaylists({ accessToken, onAddToQueue, onPlayNow }: YouTubePlaylistsProps) {
+export function YouTubePlaylists({ accessToken, onAddToQueue, onAddTracksToQueue, onPlayNow }: YouTubePlaylistsProps) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [selectedPlaylist, setSelectedPlaylist] = useState<string | null>(null);
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -138,7 +139,7 @@ export function YouTubePlaylists({ accessToken, onAddToQueue, onPlayNow }: YouTu
   };
 
   const handleAddAll = () => {
-    filteredTracks.forEach(track => onAddToQueue(track));
+    onAddTracksToQueue(filteredTracks);
   };
 
   return (

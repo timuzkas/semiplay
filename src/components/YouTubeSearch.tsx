@@ -6,13 +6,14 @@ import { YouTubePlaylists } from './YouTubePlaylists';
 
 interface YouTubeSearchProps {
   onAddToQueue: (track: Track) => void;
+  onAddTracksToQueue: (tracks: Track[]) => void;
   onPlayNow: (track: Track) => void;
   className?: string;
 }
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-export function YouTubeSearch({ onAddToQueue, onPlayNow, className }: YouTubeSearchProps) {
+export function YouTubeSearch({ onAddToQueue, onAddTracksToQueue, onPlayNow, className }: YouTubeSearchProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Track[]>([]);
@@ -285,6 +286,7 @@ export function YouTubeSearch({ onAddToQueue, onPlayNow, className }: YouTubeSea
                   <YouTubePlaylists 
                     accessToken={ytAccessToken}
                     onAddToQueue={onAddToQueue}
+                    onAddTracksToQueue={onAddTracksToQueue}
                     onPlayNow={onPlayNow}
                   />
                 ) : (
