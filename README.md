@@ -1,73 +1,43 @@
-# React + TypeScript + Vite
+# semiplay
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern, open-source music visualizer and synchronized listening room for YouTube Music and Spotify.
 
-Currently, two official plugins are available:
+## Features
+- **Real-time Room Sync**: Share a URL to listen with friends in sync.
+- **YouTube Music Integration**: Pair your account to access your playlists and Liked Songs.
+- **Dynamic Themes**: UI accent colors automatically adapt to the current album artwork.
+- **Lyrics Support**: Synced and plain lyrics from multiple sources (LRCLIB, NetEase, lyrics.ovh).
+- **TV Mode**: A distraction-free, fullscreen interface for big screens.
+- **Mobile Friendly**: Optimized UI for phones and tablets.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Quick Start
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 1. Backend Setup
+```bash
+cd app/server
+npm install
+# Create a .env file with your Google API credentials
+npm start
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 2. Frontend Setup
+```bash
+cd app
+bun install
+bun dev
 ```
+
+## Environment Variables (`app/server/.env`)
+Required for YouTube account features:
+- `GOOGLE_CLIENT_ID`: Your Google OAuth Client ID
+- `GOOGLE_CLIENT_SECRET`: Your Google OAuth Client Secret
+- `GOOGLE_REDIRECT_URI`: `http://localhost:3001/api/auth/callback`
+- `FRONTEND_URL`: `http://localhost:5173` (or `4173` for preview)
+
+## Privacy
+- All authentication tokens are stored locally in your browser.
+- Room sync state is kept in volatile memory and never persisted to a database.
+- Zero analytics or tracking.
+
+## License
+Open-source. Provided "as-is".
