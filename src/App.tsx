@@ -359,8 +359,16 @@ function AppContent() {
 
   const handlePrevious = () => { if (activeService === "spotify") spotifyPlayer.previousTrack(); };
   const handleNext = () => {
-    if (activeService === "spotify") spotifyPlayer.nextTrack();
-    else if (queue.length > 0) playFromQueue(queue[0], 0);
+    if (activeService === "spotify") {
+      spotifyPlayer.nextTrack();
+    } else if (queue.length > 0) {
+      if (shuffle) {
+        const randomIndex = Math.floor(Math.random() * queue.length);
+        playFromQueue(queue[randomIndex], randomIndex);
+      } else {
+        playFromQueue(queue[0], 0);
+      }
+    }
   };
 
   const handleVolumeChange = (v: number) => {
