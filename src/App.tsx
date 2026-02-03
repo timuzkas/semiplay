@@ -224,10 +224,15 @@ function AppContent() {
 
   const lastSyncTimeRef = useRef<number>(0);
   const lastAppliedRemoteTimestampRef = useRef<number>(0);
+  const lastLocalActionTimeRef = useRef<number>(0);
 
   const broadcastState = useCallback(
     (overrides: any = {}) => {
       if (!socket || !roomSync || !roomId || isApplyingSyncRef.current) return;
+
+      if (Object.keys(overrides).length > 0) {
+        lastLocalActionTimeRef.current = Date.now();
+      }
 
       const state = {
         track: currentTrack,
@@ -250,6 +255,8 @@ function AppContent() {
     const handleSync = (state: any) => {
       if (state.sender === socket.id) return;
       if (state.timestamp <= lastAppliedRemoteTimestampRef.current) return;
+      
+      const isRecentLocalAction = Date.now() - lastLocalActionTimeRef.current < 2500;
       if (Date.now() - lastSyncTimeRef.current < 500) return;
 
       isApplyingSyncRef.current = true;
@@ -269,7 +276,7 @@ function AppContent() {
         setQueue(state.queue);
       }
 
-      if (!trackChanged) {
+      if (!trackChanged && !isRecentLocalAction) {
         if (
           typeof state.position === "number" &&
           Math.abs(state.position - position) > 8000
