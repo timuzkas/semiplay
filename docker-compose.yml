@@ -11,10 +11,7 @@ services:
     restart: unless-stopped
 
   semiplay-web:
-    build:
-      context: .
-      args:
-        - VITE_API_URL=https://api.semi.timuzkas.xyz
+    build: .
     container_name: semiplay-web
     ports:
       - "3010:80"

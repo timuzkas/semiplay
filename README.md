@@ -19,16 +19,11 @@ bun install
 bun dev
 ```
 
-**docker / podman**
-```bash
-# using docker
-docker compose up --build -d
-
-# using podman
-podman-compose up --build -d
-# or
-podman compose up --build -d
-```
+**docker / podman (low space mode)**
+to save space on a vps (fits in < 500MB):
+1. build locally: `VITE_API_URL=https://api.semi.timuzkas.xyz bun run build`
+2. upload the `dist/` folder and `docker-compose.yml` to your vps.
+3. run: `podman-compose up --build -d`
 
 ### environment (`app/server/.env`)
 you'll need these for the youtube account sync:
