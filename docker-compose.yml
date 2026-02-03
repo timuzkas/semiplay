@@ -1,0 +1,23 @@
+services:
+  semiplay-api:
+    build: ./server
+    container_name: semiplay-api
+    ports:
+      - "3009:3001"
+    environment:
+      - FRONTEND_URL=https://semi.timuzkas.xyz
+    env_file:
+      - ./server/.env
+    restart: unless-stopped
+
+  semiplay-web:
+    build:
+      context: .
+      args:
+        - VITE_API_URL=https://api.semi.timuzkas.xyz
+    container_name: semiplay-web
+    ports:
+      - "3010:80"
+    depends_on:
+      - semiplay-api
+    restart: unless-stopped
