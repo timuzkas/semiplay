@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
@@ -15,7 +16,10 @@ const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3001/api/auth/callback'
 );
 
-const SCOPES = ['https://www.googleapis.com/auth/youtube.readonly'];
+const SCOPES = [
+  'https://www.googleapis.com/auth/youtube.readonly',
+  'https://www.googleapis.com/auth/youtube'
+];
 
 app.use(cors());
 app.use(express.json());
@@ -33,9 +37,9 @@ app.get('/api/auth/callback', async (req, res) => {
   const { code } = req.query;
   try {
     const { tokens } = await oauth2Client.getToken(code);
-    res.redirect(`http://localhost:5173/#yt_access_token=${tokens.access_token}`);
+    res.redirect(`${FRONTEND_URL}/#yt_access_token=${tokens.access_token}`);
   } catch (error) {
-    res.redirect('http://localhost:5173/?error=auth_failed');
+    res.redirect(`${FRONTEND_URL}/?error=auth_failed`);
   }
 });
 
@@ -51,9 +55,26 @@ app.get('/api/youtube/playlists', async (req, res) => {
     const response = await youtube.playlists.list({
       part: 'snippet,contentDetails',
       mine: true,
-      maxResults: 25,
+      maxResults: 50,
     });
-    res.json(response.data);
+
+    const playlists = response.data.items || [];
+    
+    // Add Liked Songs as a pseudo-playlist
+    const likedSongs = {
+      id: 'LL', // YouTube special ID for Liked list
+      snippet: {
+        title: 'Liked Songs',
+        thumbnails: {
+          default: { url: 'https://www.gstatic.com/youtube/src/web/htdocs/img/content_type_video_like_v2.png' }
+        }
+      },
+      contentDetails: {
+        itemCount: '?'
+      }
+    };
+
+    res.json({ items: [likedSongs, ...playlists] });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -68,11 +89,20 @@ app.get('/api/youtube/playlistItems', async (req, res) => {
 
   const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
   try {
-    const response = await youtube.playlistItems.list({
+    const params = {
       part: 'snippet,contentDetails',
-      playlistId,
       maxResults: 50,
-    });
+    };
+
+    if (playlistId === 'LL') {
+      // Special handling for Liked Music if playlistItems fails for LL
+      // Note: LL is technically a playlist but often needs different scope
+      params.playlistId = 'LL';
+    } else {
+      params.playlistId = playlistId;
+    }
+
+    const response = await youtube.playlistItems.list(params);
     
     const tracks = response.data.items.map(item => ({
       id: item.contentDetails.videoId,
@@ -96,6 +126,7 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 3001;
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 app.use(cors());
 app.use(express.json());

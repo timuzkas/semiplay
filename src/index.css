@@ -67,6 +67,29 @@
   }
 }
 
+/* Mobile Responsive Tweaks */
+@media (max-width: 768px) {
+  .album-artwork-large {
+    width: 240px !important;
+    height: 240px !important;
+  }
+  
+  .font-instrument {
+    font-size: 1.5rem !important;
+  }
+}
+
+@media (max-width: 640px) {
+  header {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+  
+  .header-title {
+    display: none;
+  }
+}
+
 /* Custom scrollbar - minimal */
 .scrollbar-hide {
   -ms-overflow-style: none;

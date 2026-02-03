@@ -36,11 +36,11 @@ export function TrackInfo({
   const classes = sizeClasses[size];
 
   return (
-    <div className={cn('flex flex-col min-w-0', className)}>
+    <div className={cn('flex flex-col min-w-0 max-w-full px-4', className)}>
       <span
         className={cn(
           classes.name,
-          'text-foreground truncate leading-tight',
+          'text-foreground leading-tight line-clamp-2 break-words',
           size === 'large' && 'tracking-tight'
         )}
         title={name}
@@ -50,7 +50,7 @@ export function TrackInfo({
       <span
         className={cn(
           classes.artist,
-          'text-muted-foreground truncate mt-0.5'
+          'text-muted-foreground truncate mt-1'
         )}
         title={artist}
       >

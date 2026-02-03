@@ -10,7 +10,7 @@ interface YouTubeSearchProps {
   className?: string;
 }
 
-const API_URL = 'http://localhost:3001';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export function YouTubeSearch({ onAddToQueue, onPlayNow, className }: YouTubeSearchProps) {
   const [isOpen, setIsOpen] = useState(false);
