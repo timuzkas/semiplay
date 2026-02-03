@@ -50,9 +50,7 @@ function AppContent() {
   const { theme, setTheme, accentColor, setAccentColor } = useTheme();
   const { extractColor } = useAlbumColor();
 
-  if (window.location.pathname === "/terms") {
-    return <Terms fullPage />;
-  }
+  if (window.location.pathname === "/terms") return <Terms fullPage />;
   
   useEffect(() => {
     const saved = localStorage.getItem("music-visualizer-theme");
@@ -108,6 +106,7 @@ function AppContent() {
   const lastLocalActionTimeRef = useRef<number>(0);
   const lastAppliedRemoteTimestampRef = useRef<number>(0);
   const isApplyingSyncRef = useRef(false);
+  const isFirstSyncRef = useRef(true);
 
   const handlePlayPause = useCallback(() => {
     if (activeService === "spotify") spotifyPlayer.togglePlay();
@@ -148,6 +147,7 @@ function AppContent() {
       const newId = Math.random().toString(36).substring(2, 7).toUpperCase();
       setRoomId(newId);
       setRoomSync(true);
+      isFirstSyncRef.current = true;
       socket?.emit("join-room", newId);
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.set("share", newId);
@@ -178,6 +178,7 @@ function AppContent() {
     if (shareId) {
       setRoomId(shareId);
       setRoomSync(true);
+      isFirstSyncRef.current = true;
       s.emit("join-room", shareId);
     }
 
@@ -197,10 +198,12 @@ function AppContent() {
       isApplyingSyncRef.current = true;
       lastAppliedRemoteTimestampRef.current = state.timestamp;
 
+      let trackChanged = false;
       if (state.track && state.track.id !== stateRef.current.currentTrack?.id) {
         if (state.track.source === "youtube") {
           setActiveService("youtube");
           youtubePlayer.playTrack(state.track);
+          trackChanged = true;
         }
       }
 
@@ -208,19 +211,31 @@ function AppContent() {
         setQueue(state.queue);
       }
 
-      if (typeof state.position === "number" && Math.abs(state.position - stateRef.current.position) > 8000) {
-        handleSeek(state.position);
-      }
-      if (typeof state.isPlaying === "boolean" && state.isPlaying !== stateRef.current.isPlaying) {
-        if (state.isPlaying) {
-          if (stateRef.current.activeService === "youtube") youtubePlayer.play();
-          else spotifyPlayer.togglePlay();
+      // Initial Join Logic: Force position and playback even if track changed
+      const isFirst = isFirstSyncRef.current;
+      if (!trackChanged || isFirst) {
+        const applyPlayback = () => {
+          if (typeof state.position === "number") handleSeek(state.position);
+          if (typeof state.isPlaying === "boolean") {
+            if (state.isPlaying) {
+              if (stateRef.current.activeService === "youtube") youtubePlayer.play();
+              else spotifyPlayer.togglePlay();
+            } else {
+              if (stateRef.current.activeService === "youtube") youtubePlayer.pause();
+              else spotifyPlayer.togglePlay();
+            }
+          }
+        };
+
+        if (isFirst && trackChanged) {
+          // Give player a moment to mount before seeking on join
+          setTimeout(applyPlayback, 1000);
         } else {
-          if (stateRef.current.activeService === "youtube") youtubePlayer.pause();
-          else spotifyPlayer.togglePlay();
+          applyPlayback();
         }
       }
 
+      isFirstSyncRef.current = false;
       setTimeout(() => { isApplyingSyncRef.current = false; }, 1000);
     };
 
@@ -245,10 +260,7 @@ function AppContent() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || (e.target as HTMLElement).isContentEditable) return;
-      if (e.code === 'Space') {
-        e.preventDefault();
-        syncPlayPause();
-      }
+      if (e.code === 'Space') { e.preventDefault(); syncPlayPause(); }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -357,24 +369,16 @@ function AppContent() {
 
   if (showOnboarding) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <div className="min-h-screen bg-background flex items-center justify-center p-6 text-white">
         <div className="max-w-md w-full space-y-8 text-center">
-          <div className="flex justify-center">
-            <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center">
-              <Music2 className="w-10 h-10 text-primary" />
-            </div>
-          </div>
+          <div className="flex justify-center"><div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center"><Music2 className="w-10 h-10 text-primary" /></div></div>
           <div className="space-y-2">
-            <h1 className="text-4xl font-instrument tracking-tight text-white">semiplay</h1>
+            <h1 className="text-4xl font-instrument tracking-tight">semiplay</h1>
             <p className="text-muted-foreground text-sm">Connect your music service to enjoy lyrics and visualizations</p>
           </div>
           <div className="space-y-3">
-            <button disabled className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl bg-zinc-800 text-muted-foreground font-medium cursor-not-allowed opacity-50">
-              <SpotifyIcon className="w-5 h-5" /> Spotify coming soon
-            </button>
-            <button onClick={() => { setYoutubeConnected(true); setActiveService("youtube"); }} className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl bg-secondary text-foreground font-medium hover:bg-secondary/80 active:scale-[0.98] transition-all duration-200">
-              <Youtube className="w-5 h-5" /> Use YouTube Music
-            </button>
+            <button disabled className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl bg-zinc-800 text-muted-foreground font-medium cursor-not-allowed opacity-50"><SpotifyIcon className="w-5 h-5" /> Spotify coming soon</button>
+            <button onClick={() => { setYoutubeConnected(true); setActiveService("youtube"); }} className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl bg-secondary text-foreground font-medium hover:bg-secondary/80 active:scale-[0.98] transition-all duration-200"><Youtube className="w-5 h-5" /> Use YouTube Music</button>
           </div>
           <p className="text-xs text-muted-foreground">Connect your account in settings to access your playlists</p>
         </div>
@@ -408,7 +412,7 @@ function AppContent() {
 
         <main className="flex-1 flex overflow-hidden relative">
           <div className="flex-1 flex flex-col p-4 md:p-6 min-w-0 overflow-y-auto scrollbar-hide">
-            <div className="flex flex-col items-center justify-center flex-1 gap-6 md:gap-8 py-4 md:py-8">
+            <div className="flex flex-col items-center justify-center flex-1 gap-6 md:gap-8 py-4 md:py-8 text-white">
               <AlbumArtwork src={currentTrack?.artwork} alt={currentTrack?.name} size="large" isPlaying={isPlaying} />
               <TrackInfo name={currentTrack?.name || "Not Playing"} artist={currentTrack?.artist || "Select a track"} album={currentTrack?.album} size="medium" className="text-center" />
               {showVisualizer && (
@@ -431,15 +435,15 @@ function AppContent() {
             </footer>
           </div>
           {showLyrics && (
-            <LyricsQueuePanel lyrics={lyrics.lyrics} currentLineIndex={lyrics.currentLineIndex} isLoading={lyrics.isLoading} queue={queue} currentTrack={currentTrack} isPlaying={isPlaying} onTrackSelect={playFromQueue} onRemoveFromQueue={removeFromQueue} onClearQueue={clearQueue} className="hidden lg:flex w-80 xl:w-96 shrink-0" showLyrics={showLyrics} />
+            <LyricsQueuePanel lyrics={lyrics.lyrics} currentLineIndex={lyrics.currentLineIndex} isLoading={lyrics.isLoading} queue={queue} currentTrack={currentTrack} isPlaying={isPlaying} onTrackSelect={playFromQueue} onRemoveFromQueue={removeFromQueue} onClearQueue={clearQueue} className="hidden lg:flex w-80 xl:w-96 shrink-0 text-white" showLyrics={showLyrics} />
           )}
         </main>
 
         {showSettings && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => setShowSettings(false)}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in text-white" onClick={() => setShowSettings(false)}>
             <div className="bg-background rounded-2xl p-6 w-full max-sm:mx-4 max-w-sm shadow-2xl animate-in modal-in" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold text-white">Settings</h2>
+                <h2 className="text-lg font-semibold">Settings</h2>
                 <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-secondary rounded-lg transition-colors"><Minimize2 className="w-4 h-4" /></button>
               </div>
               <div className="space-y-5">
@@ -494,21 +498,21 @@ function AppContent() {
         )}
 
         {showThemeSettings && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => setShowThemeSettings(false)}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in text-white" onClick={() => setShowThemeSettings(false)}>
             <div className="bg-background rounded-2xl p-6 w-full max-sm:mx-4 max-w-sm shadow-2xl animate-in modal-in" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold flex items-center gap-2 text-white"><Palette className="w-5 h-5" /> Theme</h2>
+                <h2 className="text-lg font-semibold flex items-center gap-2"><Palette className="w-5 h-5" /> Theme</h2>
                 <button onClick={() => setShowThemeSettings(false)} className="p-2 hover:bg-secondary rounded-lg transition-colors"><Minimize2 className="w-4 h-4" /></button>
               </div>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <button onClick={() => setTheme("dark")} className={cn("p-4 rounded-xl border-2 transition-all", theme === "dark" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50")}>
                     <div className="w-full h-12 rounded-lg bg-zinc-900 mb-3" />
-                    <span className="text-sm font-medium text-white">Dark</span>
+                    <span className="text-sm font-medium">Dark</span>
                   </button>
                   <button onClick={() => setTheme("album-accent")} className={cn("p-4 rounded-xl border-2 transition-all", theme === "album-accent" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50")}>
                     <div className="w-full h-12 rounded-lg mb-3" style={{ background: `linear-gradient(135deg, ${accentColor}40, ${accentColor}20)` }} />
-                    <span className="text-sm font-medium text-white">Album Accent</span>
+                    <span className="text-sm font-medium">Album Accent</span>
                   </button>
                 </div>
                 {theme === "album-accent" && (
@@ -516,7 +520,7 @@ function AppContent() {
                     <label className="text-sm text-muted-foreground">Accent Color</label>
                     <div className="flex gap-2">
                       <input type="color" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} className="w-10 h-10 rounded-lg cursor-pointer" />
-                      <input type="text" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} className="flex-1 px-3 py-2 rounded-lg bg-secondary text-sm text-white" />
+                      <input type="text" value={accentColor} onChange={(e) => setAccentColor(e.target.value)} className="flex-1 px-3 py-2 rounded-lg bg-secondary text-sm" />
                     </div>
                   </div>
                 )}
