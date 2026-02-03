@@ -98,16 +98,16 @@ function AppContent() {
   const duration = activeService === "spotify" ? spotifyPlayer.duration : youtubePlayer.playbackState.duration;
   const volume = activeService === "spotify" ? spotifyPlayer.volume : youtubePlayer.playbackState.volume;
 
-  const stateRef = useRef({ currentTrack, position, isPlaying, queue, activeService, roomSync, roomId });
+  const stateRef = useRef({ currentTrack, position, isPlaying, queue, activeService, roomSync, roomId, isReady: youtubePlayer.isReady });
   useEffect(() => {
-    stateRef.current = { currentTrack, position, isPlaying, queue, activeService, roomSync, roomId };
-  }, [currentTrack, position, isPlaying, queue, activeService, roomSync, roomId]);
+    stateRef.current = { currentTrack, position, isPlaying, queue, activeService, roomSync, roomId, isReady: youtubePlayer.isReady };
+  }, [currentTrack, position, isPlaying, queue, activeService, roomSync, roomId, youtubePlayer.isReady]);
 
   const lastLocalActionTimeRef = useRef<number>(0);
   const lastAppliedRemoteTimestampRef = useRef<number>(0);
   const isApplyingSyncRef = useRef(false);
   
-  // JOINING LOGIC
+  // ROBUST JOINING LOGIC
   const [isJoining, setIsJoining] = useState(false);
   const pendingSyncRef = useRef<{ trackId: string; position: number; isPlaying: boolean } | null>(null);
 
@@ -125,14 +125,14 @@ function AppContent() {
     const { roomId: rid, roomSync: rs, currentTrack: ct, position: p, isPlaying: ip, queue: q } = stateRef.current;
     if (!socket || !rid || !rs || isApplyingSyncRef.current) return;
 
-    // VERY IMPORTANT: Don't broadcast if we are still joining/syncing up, 
-    // otherwise we might send "position 0" and overwrite others!
-    if (isJoining && Object.keys(overrides).length === 0) return;
-
+    // Join Guard: Never broadcast periodic state if still joining!
+    // This prevents joiners from resetting the room to position 0.
     const isManual = Object.keys(overrides).length > 0;
+    if (isJoining && !isManual) return;
+
     if (isManual) {
       lastLocalActionTimeRef.current = Date.now();
-      setIsJoining(false); // Manual action overrides join state
+      setIsJoining(false); 
     }
 
     socket.emit("update-state", {
@@ -196,25 +196,32 @@ function AppContent() {
     return () => { s.disconnect(); };
   }, []);
 
-  // Effect to apply pending sync when player is ready
+  // PERSISTENT JOIN CATCH-UP
   useEffect(() => {
-    if (pendingSyncRef.current && youtubePlayer.isReady && youtubePlayer.currentTrack?.id === pendingSyncRef.current.trackId) {
-      const { position: p, isPlaying: ip } = pendingSyncRef.current;
-      
-      const timer = setTimeout(() => {
-        console.log("[Sync] Applying join catch-up:", p, ip);
-        handleSeek(p);
-        if (ip) youtubePlayer.play();
-        else youtubePlayer.pause();
-        pendingSyncRef.current = null;
-        
-        // Joining client is now caught up
-        setTimeout(() => setIsJoining(false), 2000);
-      }, 1500);
+    if (!isJoining || !pendingSyncRef.current || !youtubePlayer.isReady) return;
 
-      return () => clearTimeout(timer);
-    }
-  }, [youtubePlayer.isReady, youtubePlayer.currentTrack?.id, handleSeek, youtubePlayer]);
+    const target = pendingSyncRef.current;
+    
+    // We try to apply the sync every second until we successfully start
+    const interval = setInterval(() => {
+      // Ensure track matches before seeking
+      if (youtubePlayer.currentTrack?.id === target.trackId) {
+        console.log("[Sync] Catching up joiner to:", target.position);
+        handleSeek(target.position);
+        if (target.isPlaying) youtubePlayer.play();
+        else youtubePlayer.pause();
+        
+        // Once we've applied it once while ready, give it 2s to settle then end joining mode
+        setTimeout(() => {
+          setIsJoining(false);
+          pendingSyncRef.current = null;
+        }, 2000);
+        clearInterval(interval);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isJoining, youtubePlayer.isReady, youtubePlayer.currentTrack?.id, handleSeek, youtubePlayer]);
 
   useEffect(() => {
     if (!socket || !roomSync || !roomId) return;
@@ -243,12 +250,14 @@ function AppContent() {
       }
 
       if (isJoining && state.track) {
+        // Store target for the persistent catch-up loop
         pendingSyncRef.current = {
           trackId: state.track.id,
           position: state.position || 0,
           isPlaying: state.isPlaying ?? true
         };
       } else if (!trackChanged) {
+        // Normal sync
         if (typeof state.position === "number" && Math.abs(state.position - stateRef.current.position) > 8000) {
           handleSeek(state.position);
         }
