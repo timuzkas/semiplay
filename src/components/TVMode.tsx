@@ -106,18 +106,19 @@ export function TVMode({
   if (!isActive) return null;
 
   const VolumeIcon = volume === 0 ? VolumeX : Volume2;
+  const displayArtwork = currentTrack?.artworkHigh || currentTrack?.artwork;
 
   return (
     <div 
-      className="fixed inset-0 z-[100] bg-black flex flex-col"
+      className="fixed inset-0 z-[100] bg-black flex flex-col text-white"
       onClick={resetControlsTimeout}
     >
       {/* Background Album Art (blurred) */}
-      {currentTrack?.artwork && (
+      {displayArtwork && (
         <div 
           className="absolute inset-0 opacity-20"
           style={{
-            backgroundImage: `url(${currentTrack.artwork})`,
+            backgroundImage: `url(${displayArtwork})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             filter: 'blur(60px) saturate(1.5)',
@@ -136,10 +137,10 @@ export function TVMode({
             isPlaying ? 'scale-100' : 'scale-95'
           )}
         >
-          {currentTrack?.artwork ? (
+          {displayArtwork ? (
             <img
-              src={currentTrack.artwork}
-              alt={currentTrack.name}
+              src={displayArtwork}
+              alt={currentTrack?.name}
               className={cn(
                 'w-full h-full object-cover',
                 'transition-transform duration-[10s] ease-linear',

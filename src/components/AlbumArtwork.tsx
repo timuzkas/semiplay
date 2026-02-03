@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 
 interface AlbumArtworkProps {
   src?: string;
+  highResSrc?: string;
   alt?: string;
   size?: 'small' | 'medium' | 'large' | 'fullscreen';
   isPlaying?: boolean;
@@ -12,6 +13,7 @@ interface AlbumArtworkProps {
 
 export function AlbumArtwork({
   src,
+  highResSrc,
   alt = 'Album artwork',
   size = 'medium',
   isPlaying = false,
@@ -20,10 +22,13 @@ export function AlbumArtwork({
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
 
+  // Pick high res if available
+  const displaySrc = highResSrc || src;
+
   useEffect(() => {
     setLoaded(false);
     setError(false);
-  }, [src]);
+  }, [displaySrc]);
 
   const sizeClasses = {
     small: 'w-12 h-12 rounded-lg',
@@ -57,9 +62,9 @@ export function AlbumArtwork({
       )}
 
       {/* Image */}
-      {src && !error && (
+      {displaySrc && !error && (
         <img
-          src={src}
+          src={displaySrc}
           alt={alt}
           className={cn(
             'w-full h-full object-cover transition-all duration-500',
@@ -72,11 +77,11 @@ export function AlbumArtwork({
       )}
 
       {/* Ambient glow */}
-      {loaded && src && !error && (
+      {loaded && displaySrc && !error && (
         <div
           className="absolute -inset-8 -z-10 blur-3xl opacity-20"
           style={{
-            backgroundImage: `url(${src})`,
+            backgroundImage: `url(${displaySrc})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           }}

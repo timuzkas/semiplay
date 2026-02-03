@@ -87,7 +87,8 @@ function AppContent() {
         artist: spotifyPlayer.currentTrack.artists.map((a) => a.name).join(", "),
         album: spotifyPlayer.currentTrack.album.name,
         duration: spotifyPlayer.duration,
-        artwork: spotifyPlayer.currentTrack.album.images[0]?.url,
+        artwork: spotifyPlayer.currentTrack.album.images[spotifyPlayer.currentTrack.album.images.length - 1]?.url,
+        artworkHigh: spotifyPlayer.currentTrack.album.images[0]?.url,
         source: "spotify",
       } : null)
     : youtubePlayer.currentTrack;
@@ -448,7 +449,13 @@ function AppContent() {
         <main className="flex-1 flex overflow-hidden relative">
           <div className="flex-1 flex flex-col p-4 md:p-6 min-w-0 overflow-y-auto scrollbar-hide text-white text-center">
             <div className="flex flex-col items-center justify-center flex-1 gap-6 md:gap-8 py-4 md:py-8">
-              <AlbumArtwork src={currentTrack?.artwork} alt={currentTrack?.name} size="large" isPlaying={isPlaying} />
+              <AlbumArtwork 
+                src={currentTrack?.artwork} 
+                highResSrc={currentTrack?.artworkHigh}
+                alt={currentTrack?.name} 
+                size="large" 
+                isPlaying={isPlaying} 
+              />
               <TrackInfo name={currentTrack?.name || "Not Playing"} artist={currentTrack?.artist || "Select a track"} album={currentTrack?.album} size="medium" className="text-center" />
               {showVisualizer && (
                 <div className="w-full h-24 md:h-32"><Visualizer isPlaying={isPlaying} type={visualizerType} color={accentColor} /></div>

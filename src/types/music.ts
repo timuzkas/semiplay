@@ -5,6 +5,7 @@ export interface Track {
   album: string;
   duration: number; // in milliseconds
   artwork?: string;
+  artworkHigh?: string;
   uri?: string;
   source: 'spotify' | 'youtube';
 }
