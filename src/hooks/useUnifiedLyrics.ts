@@ -156,7 +156,6 @@ export function useUnifiedLyrics({
         });
         console.log(`[Lyrics] LRCLIB URL: https://lrclib.net/api/get?${params.toString()}`);
         const response = await fetch(`https://lrclib.net/api/get?${params.toString()}`, {
-          headers: { 'User-Agent': 'MusicVisualizer/1.0' },
           signal: abortControllerRef.current.signal,
         });
         if (response.ok) {

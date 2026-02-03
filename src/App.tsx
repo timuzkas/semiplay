@@ -106,7 +106,9 @@ function AppContent() {
   const lastLocalActionTimeRef = useRef<number>(0);
   const lastAppliedRemoteTimestampRef = useRef<number>(0);
   const isApplyingSyncRef = useRef(false);
-  const isFirstSyncRef = useRef(true);
+  
+  // JOINING LOGIC
+  const [isJoining, setIsJoining] = useState(false);
   const pendingSyncRef = useRef<{ trackId: string; position: number; isPlaying: boolean } | null>(null);
 
   const handlePlayPause = useCallback(() => {
@@ -123,14 +125,21 @@ function AppContent() {
     const { roomId: rid, roomSync: rs, currentTrack: ct, position: p, isPlaying: ip, queue: q } = stateRef.current;
     if (!socket || !rid || !rs || isApplyingSyncRef.current) return;
 
+    // VERY IMPORTANT: Don't broadcast if we are still joining/syncing up, 
+    // otherwise we might send "position 0" and overwrite others!
+    if (isJoining && Object.keys(overrides).length === 0) return;
+
     const isManual = Object.keys(overrides).length > 0;
-    if (isManual) lastLocalActionTimeRef.current = Date.now();
+    if (isManual) {
+      lastLocalActionTimeRef.current = Date.now();
+      setIsJoining(false); // Manual action overrides join state
+    }
 
     socket.emit("update-state", {
       roomId: rid,
       state: { track: ct, position: p, isPlaying: ip, queue: q, timestamp: Date.now(), sender: socket.id, ...overrides }
     });
-  }, [socket]);
+  }, [socket, isJoining]);
 
   const syncPlayPause = useCallback(() => {
     const newIsPlaying = !isPlaying;
@@ -148,7 +157,7 @@ function AppContent() {
       const newId = Math.random().toString(36).substring(2, 7).toUpperCase();
       setRoomId(newId);
       setRoomSync(true);
-      isFirstSyncRef.current = true;
+      setIsJoining(true);
       socket?.emit("join-room", newId);
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.set("share", newId);
@@ -156,6 +165,7 @@ function AppContent() {
     } else {
       setRoomSync(false);
       setRoomId(null);
+      setIsJoining(false);
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.delete("share");
       window.history.pushState({}, "", newUrl);
@@ -179,26 +189,28 @@ function AppContent() {
     if (shareId) {
       setRoomId(shareId);
       setRoomSync(true);
-      isFirstSyncRef.current = true;
+      setIsJoining(true);
       s.emit("join-room", shareId);
     }
 
     return () => { s.disconnect(); };
   }, []);
 
-  // FORCE JOIN SYNC EFFECT
-  // This watches for the player to be ready and apply the correct mid-song position
+  // Effect to apply pending sync when player is ready
   useEffect(() => {
     if (pendingSyncRef.current && youtubePlayer.isReady && youtubePlayer.currentTrack?.id === pendingSyncRef.current.trackId) {
       const { position: p, isPlaying: ip } = pendingSyncRef.current;
       
       const timer = setTimeout(() => {
-        console.log("[Sync] Mid-song join initialization:", p, ip);
+        console.log("[Sync] Applying join catch-up:", p, ip);
         handleSeek(p);
         if (ip) youtubePlayer.play();
         else youtubePlayer.pause();
         pendingSyncRef.current = null;
-      }, 1500); // Give it a buffer to ensure buffer is ready for seek
+        
+        // Joining client is now caught up
+        setTimeout(() => setIsJoining(false), 2000);
+      }, 1500);
 
       return () => clearTimeout(timer);
     }
@@ -218,7 +230,6 @@ function AppContent() {
       lastAppliedRemoteTimestampRef.current = state.timestamp;
 
       let trackChanged = false;
-      // Use direct player track to avoid state derivation lag
       if (state.track && state.track.id !== youtubePlayer.currentTrack?.id) {
         if (state.track.source === "youtube") {
           setActiveService("youtube");
@@ -231,17 +242,13 @@ function AppContent() {
         setQueue(state.queue);
       }
 
-      const isFirst = isFirstSyncRef.current;
-      
-      if (isFirst && state.track) {
-        // Always store join state to be applied by the "Force Join Sync" effect
+      if (isJoining && state.track) {
         pendingSyncRef.current = {
           trackId: state.track.id,
           position: state.position || 0,
           isPlaying: state.isPlaying ?? true
         };
       } else if (!trackChanged) {
-        // Normal mid-play sync
         if (typeof state.position === "number" && Math.abs(state.position - stateRef.current.position) > 8000) {
           handleSeek(state.position);
         }
@@ -256,7 +263,6 @@ function AppContent() {
         }
       }
 
-      isFirstSyncRef.current = false;
       setTimeout(() => { isApplyingSyncRef.current = false; }, 1000);
     };
 
@@ -266,17 +272,17 @@ function AppContent() {
       socket.off("sync-state", handleSync);
       socket.off("request-state");
     };
-  }, [socket, roomSync, roomId, youtubePlayer, spotifyPlayer, handleSeek, broadcastState]);
+  }, [socket, roomSync, roomId, youtubePlayer, spotifyPlayer, handleSeek, broadcastState, isJoining]);
 
   useEffect(() => {
     if (roomSync && roomId && socket) broadcastState();
   }, [roomSync, roomId, !!socket, broadcastState]);
 
   useEffect(() => {
-    if (!roomSync || !isPlaying || isApplyingSyncRef.current) return;
+    if (!roomSync || !isPlaying || isApplyingSyncRef.current || isJoining) return;
     const interval = setInterval(() => broadcastState(), 10000);
     return () => clearInterval(interval);
-  }, [roomSync, isPlaying, broadcastState]);
+  }, [roomSync, isPlaying, broadcastState, isJoining]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -415,7 +421,7 @@ function AppContent() {
   return (
     <>
       <div className={cn("h-screen bg-background flex flex-col transition-colors duration-500 overflow-hidden")}>
-        <header className="flex items-center justify-between px-6 py-4 border-b shrink-0">
+        <header className="flex items-center justify-between px-6 py-4 border-b shrink-0 text-white">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center"><Music2 className="w-4 h-4 text-primary" /></div>
             <TooltipProvider><Tooltip><TooltipTrigger asChild><span className="text-xl font-instrument cursor-help header-title">semiplay</span></TooltipTrigger><TooltipContent><p className="text-xs">v2.1.0-revamp</p></TooltipContent></Tooltip></TooltipProvider>
