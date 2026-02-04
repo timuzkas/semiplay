@@ -127,12 +127,12 @@ export function TVMode({
       )}
 
       {/* Main Content */}
-      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-16 py-12">
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 md:px-16 py-8 md:py-12">
         
         {/* Album Art */}
         <div 
           className={cn(
-            'relative w-64 h-64 lg:w-80 lg:h-80 rounded-3xl overflow-hidden shadow-2xl',
+            'relative w-48 h-48 md:w-64 md:h-64 lg:w-80 lg:h-80 rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl',
             'transition-all duration-700 ease-out',
             isPlaying ? 'scale-100' : 'scale-95'
           )}
@@ -149,16 +149,16 @@ export function TVMode({
             />
           ) : (
             <div className="w-full h-full bg-white/5 flex items-center justify-center">
-              <div className="w-20 h-20 rounded-full bg-white/10" />
+              <div className="w-16 h-16 rounded-full bg-white/10" />
             </div>
           )}
         </div>
 
         {/* Track Info */}
-        <div className="mt-10 text-center">
+        <div className="mt-8 md:mt-10 text-center px-4">
           <h1 
             className={cn(
-              'text-3xl lg:text-4xl font-semibold text-white tracking-tight font-instrument italic',
+              'text-2xl md:text-3xl lg:text-4xl font-semibold text-white tracking-tight font-instrument italic',
               'transition-all duration-500',
               isPlaying ? 'opacity-100 translate-y-0' : 'opacity-70 translate-y-1'
             )}
@@ -167,7 +167,7 @@ export function TVMode({
           </h1>
           <p 
             className={cn(
-              'mt-2 text-xl lg:text-2xl text-white/60',
+              'mt-1 md:mt-2 text-lg md:text-xl lg:text-2xl text-white/60',
               'transition-all duration-500 delay-100'
             )}
           >
@@ -177,10 +177,10 @@ export function TVMode({
 
         {/* Lyrics */}
         {lyrics.length > 0 && (
-          <div className="mt-8 h-24 flex items-center justify-center overflow-hidden">
+          <div className="mt-6 md:mt-8 h-20 md:h-24 flex items-center justify-center overflow-hidden px-4">
             <div 
               className={cn(
-                'text-2xl lg:text-3xl text-white/90 text-center font-medium',
+                'text-xl md:text-2xl lg:text-3xl text-white/90 text-center font-medium leading-tight',
                 'transition-all duration-500 ease-out',
                 'animate-in fade-in slide-in-from-bottom-4'
               )}
@@ -195,7 +195,7 @@ export function TVMode({
       {/* Bottom Controls Bar */}
       <div 
         className={cn(
-          'relative z-10 px-8 pb-8 pt-4',
+          'relative z-10 px-4 md:px-8 pb-6 md:pb-8 pt-4',
           'transition-all duration-500',
           showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
         )}
@@ -206,79 +206,77 @@ export function TVMode({
             position={position}
             duration={duration}
             onSeek={onSeek}
-            className="mb-6"
+            className="mb-4 md:mb-6"
           />
 
           {/* Controls */}
-          <div className="grid grid-cols-3 items-center">
-            {/* Volume */}
-            <div className="flex justify-start">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onVolumeChange(volume === 0 ? 0.7 : 0);
-                }}
-                className="p-3 rounded-full hover:bg-white/10 transition-colors"
-              >
-                <VolumeIcon className="w-5 h-5 text-white/70" />
-              </button>
-            </div>
-
-            {/* Playback Controls */}
-            <div className="flex justify-center items-center gap-8">
-              {/* Previous */}
+          <div className="flex flex-col md:grid md:grid-cols-3 items-center gap-6 md:gap-0">
+            {/* Playback Controls (Main focus on mobile) */}
+            <div className="flex justify-center items-center gap-6 md:gap-8 order-1 md:order-2">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onPrevious();
                 }}
-                className="p-3 rounded-full hover:bg-white/10 text-white/70 transition-all hover:scale-110 active:scale-95"
+                className="p-2 md:p-3 rounded-full hover:bg-white/10 text-white/70 transition-all hover:scale-110 active:scale-95"
               >
-                <SkipBack className="w-8 h-8 fill-current" />
+                <SkipBack className="w-6 h-6 md:w-8 md:h-8 fill-current" />
               </button>
 
-              {/* Play/Pause */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onPlayPause();
                 }}
                 className={cn(
-                  'w-20 h-20 rounded-full flex items-center justify-center',
-                  'bg-white text-black',
+                  'w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center',
+                  'bg-white text-black shrink-0',
                   'hover:scale-105 active:scale-95 transition-all duration-200'
                 )}
               >
                 {isPlaying ? (
-                  <Pause className="w-9 h-9 fill-current" />
+                  <Pause className="w-7 h-7 md:w-9 md:h-9 fill-current" />
                 ) : (
-                  <Play className="w-9 h-9 fill-current ml-1" />
+                  <Play className="w-7 h-7 md:w-9 md:h-9 fill-current ml-1" />
                 )}
               </button>
 
-              {/* Next */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onNext();
                 }}
-                className="p-3 rounded-full hover:bg-white/10 text-white/70 transition-all hover:scale-110 active:scale-95"
+                className="p-2 md:p-3 rounded-full hover:bg-white/10 text-white/70 transition-all hover:scale-110 active:scale-95"
               >
-                <SkipForward className="w-8 h-8 fill-current" />
+                <SkipForward className="w-6 h-6 md:w-8 md:h-8 fill-current" />
               </button>
             </div>
 
-            {/* Exit TV Mode */}
-            <div className="flex justify-end">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onExit();
-                }}
-                className="px-4 py-2 rounded-full bg-white/10 text-white/70 text-sm hover:bg-white/20 transition-colors"
-              >
-                Exit TV Mode
-              </button>
+            {/* Volume & Exit (Secondary on mobile) */}
+            <div className="w-full flex items-center justify-between md:contents order-2">
+              <div className="md:flex md:justify-start">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onVolumeChange(volume === 0 ? 0.7 : 0);
+                  }}
+                  className="p-3 rounded-full hover:bg-white/10 transition-colors"
+                >
+                  <VolumeIcon className="w-5 h-5 text-white/70" />
+                </button>
+              </div>
+
+              <div className="md:flex md:justify-end">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onExit();
+                  }}
+                  className="px-4 py-2 rounded-full bg-white/10 text-white/70 text-xs md:text-sm hover:bg-white/20 transition-colors font-medium"
+                >
+                  Exit TV Mode
+                </button>
+              </div>
             </div>
           </div>
         </div>
