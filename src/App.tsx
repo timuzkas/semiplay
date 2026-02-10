@@ -591,7 +591,7 @@ function AppContent() {
                 </div>
                 <div className="pt-4 border-t flex items-center justify-between">
                   <button onClick={() => { setShowSettings(false); setShowTerms(true); }} className="text-[10px] font-bold uppercase tracking-tight text-muted-foreground hover:text-primary transition-colors">Privacy & Terms</button>
-                  <a href="https://github.com/timuzkas/semiplay" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-tight text-muted-foreground hover:text-foreground transition-colors"><Github className="w-3 h-3" /> GitHub</a>
+                  <a href="https://github.com/timuzkas/semiplay" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-tight text-muted-foreground hover:text-foreground transition-colors"><Github className="w-3 h-3" /> GitHub hehe</a>
                 </div>
               </div>
             </div>
